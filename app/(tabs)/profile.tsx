@@ -1,3 +1,5 @@
+import { useQueryClient } from '@tanstack/react-query';
+import { useRouter } from 'expo-router';
 import { LinearGradient } from 'expo-linear-gradient';
 import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -5,38 +7,56 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { ThemedText } from '@/components/themed-text';
 import { GlassCard } from '@/components/ui/glass-card';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { SecondaryButton } from '@/components/ui/premium';
 import { ScreenBackground } from '@/components/ui/screen-background';
 import { Colors, Radii, Spacing } from '@/constants/theme';
+import { useAuth } from '@/hooks/use-auth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-
-const MENU_SECTIONS = [
-  {
-    title: 'Preferences',
-    items: [
-      { icon: 'banknote.fill' as const, label: 'Currency', value: 'MYR' },
-      { icon: 'calendar' as const, label: 'Monthly Budget', value: 'RM 2,000.00' },
-      { icon: 'creditcard.fill' as const, label: 'Categories', value: '' },
-      { icon: 'bell.fill' as const, label: 'Notifications', value: '' },
-    ],
-  },
-  {
-    title: 'Data & Privacy',
-    items: [
-      { icon: 'arrow.down.to.line' as const, label: 'Export Data (CSV)', value: '' },
-      { icon: 'trash.fill' as const, label: 'Clear Demo Data', value: '' },
-    ],
-  },
-  {
-    title: 'App',
-    items: [
-      { icon: 'info.circle.fill' as const, label: 'About MochiMemo', value: 'Version 1.0.0' },
-    ],
-  },
-];
+import { formatCurrency } from '@/utils/currency';
 
 export default function ProfileScreen() {
+  const router = useRouter();
+  const queryClient = useQueryClient();
   const colorScheme = useColorScheme() ?? 'dark';
   const colors = Colors[colorScheme];
+  const { error, loading, profile, signOut, user } = useAuth();
+  const displayName = profile?.displayName ?? user?.email?.split('@')[0] ?? 'MochiMemo user';
+  const email = user?.email ?? 'Not signed in';
+  const avatarInitial = displayName.trim().charAt(0).toUpperCase() || 'M';
+  const menuSections = [
+    {
+      title: 'Preferences',
+      items: [
+        { icon: 'banknote.fill' as const, label: 'Currency', value: profile?.currency ?? 'MYR' },
+        {
+          icon: 'calendar' as const,
+          label: 'Monthly Budget',
+          value: formatCurrency(profile?.monthlyBudget ?? 2000, profile?.currency ?? 'MYR'),
+        },
+        { icon: 'creditcard.fill' as const, label: 'Categories', value: '' },
+        { icon: 'bell.fill' as const, label: 'Notifications', value: '' },
+      ],
+    },
+    {
+      title: 'Data & Privacy',
+      items: [
+        { icon: 'arrow.down.to.line' as const, label: 'Export Data (CSV)', value: '' },
+        { icon: 'shield.fill' as const, label: 'Protected by RLS', value: 'On' },
+      ],
+    },
+    {
+      title: 'App',
+      items: [
+        { icon: 'info.circle.fill' as const, label: 'About MochiMemo', value: 'Version 1.0.0' },
+      ],
+    },
+  ];
+
+  async function handleLogout() {
+    await signOut();
+    queryClient.clear();
+    router.replace('/login');
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -61,20 +81,31 @@ export default function ProfileScreen() {
                   end={{ x: 1, y: 1 }}
                   style={StyleSheet.absoluteFillObject}
                 />
-                <ThemedText style={styles.avatarInitial}>L</ThemedText>
+                <ThemedText style={styles.avatarInitial}>{avatarInitial}</ThemedText>
               </View>
               <View style={styles.identityCopy}>
                 <ThemedText type="bodyBold" style={styles.name}>
-                  Louis
+                  {displayName}
                 </ThemedText>
                 <ThemedText type="caption" style={{ color: colors.textMuted }}>
-                  louis@example.com
+                  {email}
                 </ThemedText>
               </View>
             </View>
           </GlassCard>
 
-          {MENU_SECTIONS.map((section) => (
+          {error && (
+            <GlassCard variant="warn" padded={false}>
+              <View style={styles.noticeRow}>
+                <IconSymbol size={16} name="exclamationmark.triangle.fill" color={colors.accentHi} />
+                <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
+                  {error}
+                </ThemedText>
+              </View>
+            </GlassCard>
+          )}
+
+          {menuSections.map((section) => (
             <View key={section.title} style={styles.sectionGroup}>
               <View style={styles.sectionTitleRow}>
                 <ThemedText type="bodyBold" style={styles.sectionTitle}>
@@ -106,6 +137,13 @@ export default function ProfileScreen() {
               </GlassCard>
             </View>
           ))}
+
+          <SecondaryButton
+            label={loading ? 'Logging out...' : 'Logout'}
+            icon="arrow.left"
+            danger
+            onPress={loading ? undefined : handleLogout}
+          />
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -192,5 +230,13 @@ const styles = StyleSheet.create({
     height: 1,
     marginHorizontal: Spacing.lg,
     backgroundColor: 'rgba(255,255,255,0.055)',
+  },
+  noticeRow: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
   },
 });

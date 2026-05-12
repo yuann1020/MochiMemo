@@ -18,7 +18,7 @@ export interface Profile {
 
 export interface Expense {
   id: string;
-  profileId: string | null;
+  profileId: string;
   amount: number;
   currency: string;
   merchant: string;

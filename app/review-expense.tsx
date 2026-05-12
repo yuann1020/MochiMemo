@@ -18,13 +18,17 @@ import { ScreenBackground } from '@/components/ui/screen-background';
 import { CategoryPill, PrimaryButton, ProgressBar, SecondaryButton } from '@/components/ui/premium';
 import { Colors, Spacing } from '@/constants/theme';
 import { useCreateExpenses } from '@/hooks/use-expenses';
+import { useAuth } from '@/hooks/use-auth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useRecordingStore } from '@/stores/recording-store';
 import type { ExpenseReviewDraft } from '@/services/audio/recorder';
+import type { ExtractedExpense } from '@/types/ai';
 import type { NewExpense } from '@/types/expense';
 import { formatCurrency } from '@/utils/currency';
 
 type EditableKey = 'merchant' | 'category' | 'date' | 'note';
+const NO_EXPENSE_CLARIFICATION =
+  'Try saying: I spent RM18 on lunch.';
 
 export default function ReviewExpenseScreen() {
   const router = useRouter();
@@ -38,6 +42,7 @@ export default function ReviewExpenseScreen() {
   const markSaved = useRecordingStore((state) => state.markReviewSaved);
   const resetRecordingFlow = useRecordingStore((state) => state.reset);
   const createExpensesMutation = useCreateExpenses();
+  const { user } = useAuth();
   const [saveError, setSaveError] = useState<string | null>(null);
 
   if (!draft) {
@@ -68,12 +73,27 @@ export default function ReviewExpenseScreen() {
     updateDraft({ amount: Number.isFinite(numeric) ? numeric : 0 });
   }
 
+  const additionalExpenses = pendingExpenses.slice(1);
+  const validAdditionalExpenses = additionalExpenses.filter(isValidExtractedExpense);
+  const hasValidMainExpense = isValidReviewDraft(draft);
+
   async function handleSaveExpense() {
     if (!draft || draft.saved || createExpensesMutation.isPending) return;
 
     setSaveError(null);
 
+    if (!hasValidMainExpense) {
+      setSaveError('No valid expense detected yet. Please edit the input and try again.');
+      return;
+    }
+
+    if (!user) {
+      setSaveError('Please log in before saving expenses.');
+      return;
+    }
+
     const mainExpense: NewExpense = {
+      profileId: user.id,
       amount: draft.amount,
       currency: draft.currency,
       merchant: draft.merchant,
@@ -84,7 +104,8 @@ export default function ReviewExpenseScreen() {
       confidence: draft.confidence / 100,
       rawInput: draft.inputText,
     };
-    const additionalExpenseRows: NewExpense[] = additionalExpenses.map((expense) => ({
+    const additionalExpenseRows: NewExpense[] = validAdditionalExpenses.map((expense) => ({
+      profileId: user.id,
       amount: expense.amount,
       currency: expense.currency,
       merchant: expense.merchant,
@@ -104,9 +125,10 @@ export default function ReviewExpenseScreen() {
     }
   }
 
-  const additionalExpenses = pendingExpenses.slice(1);
   const isSaving = createExpensesMutation.isPending;
-  const confidenceMessage = extractionErrorMessage
+  const confidenceMessage = !hasValidMainExpense
+    ? 'No valid expense was found in this input.'
+    : extractionErrorMessage
     ? 'Using local mock fallback because AI extraction failed.'
     : draft.transcriptionError || transcriptionErrorMessage
       ? 'Transcription used a clearly labeled demo fallback.'
@@ -215,28 +237,46 @@ export default function ReviewExpenseScreen() {
               </GlassCard>
             )}
 
-            <GlassCard padded={false}>
-              <View style={styles.parsedHeader}>
-                <ThemedText type="bodyBold">Parsed Details</ThemedText>
-                <CategoryPill label={draft.sourceMode === 'voice' ? 'Voice' : 'Type'} compact color={colors.primaryGlow} />
-              </View>
-              <View style={styles.fieldList}>
-                <EditableAmount value={draft.amount} onChangeText={updateAmount} />
-                <EditableField label="Merchant" value={draft.merchant} onChangeText={(value) => updateField('merchant', value)} />
-                <EditableField label="Category" value={draft.category} onChangeText={(value) => updateField('category', value)} />
-                <EditableField label="Date" value={draft.date} onChangeText={(value) => updateField('date', value)} />
-                <EditableField label="Note" value={draft.note} onChangeText={(value) => updateField('note', value)} multiline />
-              </View>
-            </GlassCard>
+            {!hasValidMainExpense && (
+              <GlassCard variant="warn" padded={false}>
+                <View style={styles.noExpenseCard}>
+                  <IconSymbol size={20} name="questionmark.circle.fill" color={colors.accentHi} />
+                  <View style={styles.noExpenseCopy}>
+                    <ThemedText type="bodyBold" style={{ color: '#FFFFFF' }}>
+                      No valid expense detected
+                    </ThemedText>
+                    <ThemedText type="caption" style={{ color: colors.textSecondary }}>
+                      {clarificationQuestion ?? NO_EXPENSE_CLARIFICATION}
+                    </ThemedText>
+                  </View>
+                </View>
+              </GlassCard>
+            )}
 
-            {additionalExpenses.length > 0 && (
+            {hasValidMainExpense && (
+              <GlassCard padded={false}>
+                <View style={styles.parsedHeader}>
+                  <ThemedText type="bodyBold">Parsed Details</ThemedText>
+                  <CategoryPill label={draft.sourceMode === 'voice' ? 'Voice' : 'Type'} compact color={colors.primaryGlow} />
+                </View>
+                <View style={styles.fieldList}>
+                  <EditableAmount value={draft.amount} onChangeText={updateAmount} />
+                  <EditableField label="Merchant" value={draft.merchant} onChangeText={(value) => updateField('merchant', value)} />
+                  <EditableField label="Category" value={draft.category} onChangeText={(value) => updateField('category', value)} />
+                  <EditableField label="Date" value={draft.date} onChangeText={(value) => updateField('date', value)} />
+                  <EditableField label="Note" value={draft.note} onChangeText={(value) => updateField('note', value)} multiline />
+                </View>
+              </GlassCard>
+            )}
+
+            {hasValidMainExpense && validAdditionalExpenses.length > 0 && (
               <GlassCard padded={false}>
                 <View style={styles.additionalHeader}>
                   <ThemedText type="bodyBold">Additional Expenses</ThemedText>
-                  <CategoryPill label={`${additionalExpenses.length} more`} compact color={colors.accentHi} />
+                  <CategoryPill label={`${validAdditionalExpenses.length} more`} compact color={colors.accentHi} />
                 </View>
                 <View style={styles.additionalList}>
-                  {additionalExpenses.map((expense) => (
+                  {validAdditionalExpenses.map((expense) => (
                     <View key={expense.id} style={styles.additionalRow}>
                       <View style={styles.additionalCopy}>
                         <ThemedText type="bodyBold" style={{ color: '#FFFFFF' }}>
@@ -255,23 +295,25 @@ export default function ReviewExpenseScreen() {
               </GlassCard>
             )}
 
-            <GlassCard variant="purple" padded={false}>
-              <View style={styles.confidenceCard}>
-                <View>
-                  <ThemedText style={styles.confidenceValue}>{draft.confidence}%</ThemedText>
-                  <ThemedText type="bodyBold">AI Confidence</ThemedText>
+            {hasValidMainExpense && (
+              <GlassCard variant="purple" padded={false}>
+                <View style={styles.confidenceCard}>
+                  <View>
+                    <ThemedText style={styles.confidenceValue}>{draft.confidence}%</ThemedText>
+                    <ThemedText type="bodyBold">AI Confidence</ThemedText>
+                  </View>
+                  <View style={styles.confidenceCopy}>
+                    <ThemedText type="caption" style={{ color: colors.textSecondary }}>
+                      {confidenceMessage}
+                    </ThemedText>
+                    <ProgressBar value={draft.confidence} color={colors.primaryGlow} />
+                  </View>
+                  <View style={styles.shieldBadge}>
+                    <IconSymbol size={20} name="shield.fill" color={colors.blue} />
+                  </View>
                 </View>
-                <View style={styles.confidenceCopy}>
-                  <ThemedText type="caption" style={{ color: colors.textSecondary }}>
-                    {confidenceMessage}
-                  </ThemedText>
-                  <ProgressBar value={draft.confidence} color={colors.primaryGlow} />
-                </View>
-                <View style={styles.shieldBadge}>
-                  <IconSymbol size={20} name="shield.fill" color={colors.blue} />
-                </View>
-              </View>
-            </GlassCard>
+              </GlassCard>
+            )}
 
             {draft.saved && (
               <GlassCard variant="pink" padded={false}>
@@ -284,27 +326,43 @@ export default function ReviewExpenseScreen() {
               </GlassCard>
             )}
 
-            <View style={styles.actionRow}>
-              <SecondaryButton
-                label={draft.saved ? 'Home' : 'Edit Input'}
-                onPress={() => {
-                  if (draft.saved) {
-                    resetRecordingFlow();
-                    router.replace('/');
-                    return;
-                  }
-                  router.back();
-                }}
-                style={styles.actionButton}
-              />
-              <PrimaryButton
-                label={isSaving ? 'Saving...' : draft.saved ? 'Saved' : 'Save Expense'}
-                icon="checkmark"
-                onPress={handleSaveExpense}
-                disabled={draft.saved || isSaving || draft.amount <= 0}
-                style={styles.actionButton}
-              />
-            </View>
+            {!hasValidMainExpense ? (
+              <View style={styles.actionRow}>
+                <SecondaryButton
+                  label="Edit Input"
+                  onPress={() => router.back()}
+                  style={styles.actionButton}
+                />
+                <PrimaryButton
+                  label="Back to Add"
+                  icon="arrow.right"
+                  onPress={() => router.replace('/record')}
+                  style={styles.actionButton}
+                />
+              </View>
+            ) : (
+              <View style={styles.actionRow}>
+                <SecondaryButton
+                  label={draft.saved ? 'Home' : 'Edit Input'}
+                  onPress={() => {
+                    if (draft.saved) {
+                      resetRecordingFlow();
+                      router.replace('/');
+                      return;
+                    }
+                    router.back();
+                  }}
+                  style={styles.actionButton}
+                />
+                <PrimaryButton
+                  label={isSaving ? 'Saving...' : draft.saved ? 'Saved' : 'Save Expense'}
+                  icon="checkmark"
+                  onPress={handleSaveExpense}
+                  disabled={draft.saved || isSaving || !hasValidMainExpense}
+                  style={styles.actionButton}
+                />
+              </View>
+            )}
           </ScrollView>
         </SafeAreaView>
       </KeyboardAvoidingView>
@@ -372,6 +430,27 @@ function EditableField({
       />
     </View>
   );
+}
+
+function isValidReviewDraft(draft: ExpenseReviewDraft): boolean {
+  return (
+    draft.amount > 0 &&
+    hasMeaningfulText(draft.merchant) &&
+    hasMeaningfulText(draft.category)
+  );
+}
+
+function isValidExtractedExpense(expense: ExtractedExpense): boolean {
+  return (
+    expense.amount > 0 &&
+    hasMeaningfulText(expense.merchant) &&
+    hasMeaningfulText(expense.category)
+  );
+}
+
+function hasMeaningfulText(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return Boolean(normalized) && !['unknown', 'expense', 'purchase', 'spending'].includes(normalized);
 }
 
 function resolveSpentAt(value: string): string {
@@ -539,6 +618,18 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.md,
+  },
+  noExpenseCard: {
+    minHeight: 84,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.md,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.lg,
+  },
+  noExpenseCopy: {
+    flex: 1,
+    gap: 3,
   },
   additionalHeader: {
     flexDirection: 'row',

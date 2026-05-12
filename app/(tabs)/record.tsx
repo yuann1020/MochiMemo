@@ -41,6 +41,8 @@ type InputMode = 'voice' | 'type';
 
 const WAVE_LEFT = [10, 18, 26, 15, 34, 22, 12, 28];
 const WAVE_RIGHT = [28, 12, 22, 34, 15, 26, 18, 10];
+const NO_EXPENSE_CLARIFICATION =
+  'No valid expense detected. Try saying: I spent RM18 on lunch.';
 
 export default function AddExpenseScreen() {
   const router = useRouter();
@@ -58,6 +60,7 @@ export default function AddExpenseScreen() {
   const setExtractionError = useRecordingStore((state) => state.setExtractionError);
   const setTranscriptionError = useRecordingStore((state) => state.setTranscriptionError);
   const setStoreStatus = useRecordingStore((state) => state.setStatus);
+  const resetReviewState = useRecordingStore((state) => state.resetReviewState);
   const {
     status,
     isRecording,
@@ -75,11 +78,13 @@ export default function AddExpenseScreen() {
     if (isBusy) return;
     if (isRecording) await stopRecording();
     resetRecording();
+    resetReviewState();
     setVoiceFlowError(null);
     setInputMode(nextMode);
   }
 
   async function extractAndOpenReview(fallbackDraft: ExpenseReviewDraft) {
+    resetReviewState();
     setIsExtracting(true);
     setStoreStatus('extracting');
     setExtractionError(null);
@@ -102,7 +107,10 @@ export default function AddExpenseScreen() {
         : fallbackDraft;
 
       setPendingExpenses(result.expenses);
-      setClarificationQuestion(result.clarificationQuestion);
+      setClarificationQuestion(
+        result.clarificationQuestion ??
+          (result.expenses.length === 0 ? NO_EXPENSE_CLARIFICATION : null),
+      );
       setExtractionError(result.errorMessage);
       setTranscript(reviewDraft.transcript);
       setReviewDraft(reviewDraft);
@@ -110,7 +118,9 @@ export default function AddExpenseScreen() {
       router.push('../review-expense');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not extract expenses.';
-      setExtractionError(`AI extraction failed. Using local mock parsing instead. ${message}`);
+      setPendingExpenses([]);
+      setClarificationQuestion(NO_EXPENSE_CLARIFICATION);
+      setExtractionError(`AI extraction failed. No valid expense was detected. ${message}`);
       setTranscript(fallbackDraft.transcript);
       setReviewDraft(fallbackDraft);
       setStoreStatus('readyForReview');
@@ -121,6 +131,7 @@ export default function AddExpenseScreen() {
   }
 
   async function transcribeAndOpenReview(uri: string, durationSeconds: number) {
+    resetReviewState();
     setIsTranscribing(true);
     setVoiceFlowError(null);
     setTranscriptionError(null);
@@ -165,6 +176,7 @@ export default function AddExpenseScreen() {
     }
 
     setVoiceFlowError(null);
+    resetReviewState();
     await startRecording();
   }
 
@@ -174,6 +186,7 @@ export default function AddExpenseScreen() {
     const trimmed = typedText.trim();
     if (!trimmed) return;
 
+    resetReviewState();
     const draft = createTypedReviewDraft(trimmed);
     await extractAndOpenReview(draft);
   }
@@ -182,6 +195,7 @@ export default function AddExpenseScreen() {
     if (isBusy) return;
     if (isRecording) await stopRecording();
     resetRecording();
+    resetReviewState();
     setVoiceFlowError(null);
     setTypedText('');
   }

@@ -1,5 +1,6 @@
 import { File } from 'expo-file-system';
 
+import { getEdgeFunctionAuthHeaders } from '@/services/supabase/auth';
 import { supabase } from '@/services/supabase/client';
 import type { TranscriptionResult } from '@/types/ai';
 
@@ -31,6 +32,7 @@ export async function transcribeAudio(
     const { data, error } = await supabase.functions.invoke<TranscriptionResponse>(
       TRANSCRIPTION_FUNCTION,
       {
+        headers: await getEdgeFunctionAuthHeaders(),
         body: {
           audioBase64,
           mimeType: options.mimeType ?? inferMimeType(audioUri),
