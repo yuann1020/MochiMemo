@@ -1,4 +1,4 @@
-import { ScrollView, StyleSheet, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { ThemedText } from '@/components/themed-text';
@@ -11,9 +11,11 @@ import {
   ProgressBar,
   SectionHeader,
 } from '@/components/ui/premium';
-import { Colors, Spacing } from '@/constants/theme';
+import { Colors, Radii, Spacing } from '@/constants/theme';
+import { MIN_INSIGHTS_EXPENSE_COUNT, useAIInsights, useRefreshInsights } from '@/hooks/use-ai-insights';
 import { useExpenseStats } from '@/hooks/use-expenses';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import type { AIInsightsResult, InsightSeverity, InsightTone } from '@/types/ai';
 import { formatCurrency } from '@/utils/currency';
 
 export default function InsightsScreen() {
@@ -28,6 +30,10 @@ export default function InsightsScreen() {
   const categoryData = stats?.categoryTotals ?? [];
   const weeklyData = stats?.weeklyTotals ?? [];
   const hasData = monthlySpent > 0;
+
+  const monthlyExpenseCount = stats?.categoryTotals.reduce((sum, c) => sum + c.count, 0) ?? 0;
+  const insightsQuery = useAIInsights(monthlyExpenseCount);
+  const refreshInsights = useRefreshInsights();
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -181,10 +187,224 @@ export default function InsightsScreen() {
               </ThemedText>
             </View>
           </GlassCard>
+
+          {/* ── AI Insights ─────────────────────────────────────────────── */}
+          <SectionHeader title="AI Insights" />
+
+          {/* Not enough data */}
+          {monthlyExpenseCount < MIN_INSIGHTS_EXPENSE_COUNT && (
+            <GlassCard padded={false}>
+              <View style={styles.aiEmptyState}>
+                <IconSymbol size={22} name="sparkles" color={colors.primaryGlow} />
+                <ThemedText type="bodyBold" style={styles.aiEmptyTitle}>
+                  {monthlyExpenseCount === 0
+                    ? 'No expenses yet this month.'
+                    : `${monthlyExpenseCount} of ${MIN_INSIGHTS_EXPENSE_COUNT} expenses logged.`}
+                </ThemedText>
+                <ThemedText type="caption" style={{ color: colors.textMuted, textAlign: 'center' }}>
+                  Add {MIN_INSIGHTS_EXPENSE_COUNT - monthlyExpenseCount} more expense
+                  {MIN_INSIGHTS_EXPENSE_COUNT - monthlyExpenseCount !== 1 ? 's' : ''} to unlock AI insights.
+                </ThemedText>
+              </View>
+            </GlassCard>
+          )}
+
+          {/* Loading */}
+          {monthlyExpenseCount >= MIN_INSIGHTS_EXPENSE_COUNT && insightsQuery.isLoading && (
+            <GlassCard padded={false}>
+              <View style={styles.aiLoadingState}>
+                <ActivityIndicator size="small" color={colors.primaryGlow} />
+                <ThemedText type="caption" style={{ color: colors.textMuted }}>
+                  Generating your insights...
+                </ThemedText>
+              </View>
+            </GlassCard>
+          )}
+
+          {/* Error */}
+          {insightsQuery.isError && (
+            <GlassCard variant="warn" padded={false}>
+              <View style={styles.stateNotice}>
+                <IconSymbol size={15} name="exclamationmark.triangle.fill" color={colors.accentHi} />
+                <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
+                  {insightsQuery.error instanceof Error
+                    ? insightsQuery.error.message
+                    : "Couldn't generate insights."}
+                </ThemedText>
+                <TouchableOpacity activeOpacity={0.75} onPress={refreshInsights} style={styles.retryButton}>
+                  <ThemedText type="caption" style={{ color: colors.primaryGlow, fontWeight: '700' }}>
+                    Retry
+                  </ThemedText>
+                </TouchableOpacity>
+              </View>
+            </GlassCard>
+          )}
+
+          {/* Success */}
+          {insightsQuery.data && (
+            <AIInsightsPanel
+              insights={insightsQuery.data}
+              onRefresh={refreshInsights}
+              isRefreshing={insightsQuery.isFetching}
+            />
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
   );
+}
+
+// ─── AI Insights panel ────────────────────────────────────────────────────────
+
+function AIInsightsPanel({
+  insights,
+  onRefresh,
+  isRefreshing,
+}: {
+  insights: AIInsightsResult;
+  onRefresh: () => void;
+  isRefreshing: boolean;
+}) {
+  const colors = Colors[useColorScheme() ?? 'dark'];
+
+  return (
+    <View style={styles.aiPanel}>
+      {/* Summary card */}
+      <GlassCard variant={toneToVariant(insights.summary.tone)} padded={false}>
+        <View style={styles.aiSummary}>
+          <ThemedText style={styles.aiSummaryHeadline}>
+            {insights.summary.headline}
+          </ThemedText>
+          <ThemedText type="caption" style={{ color: colors.textSecondary }}>
+            {insights.summary.description}
+          </ThemedText>
+          <ThemedText type="label" style={[styles.aiGeneratedAt, { color: colors.textMuted }]}>
+            {formatGeneratedAt(insights.generatedAt)}
+          </ThemedText>
+        </View>
+      </GlassCard>
+
+      {/* Insight cards grid */}
+      {insights.cards.length > 0 && (
+        <View style={styles.aiCardGrid}>
+          {insights.cards.map((card, i) => (
+            <GlassCard key={i} padded={false} style={styles.aiCardItem}>
+              <View style={styles.aiCardInner}>
+                <ThemedText type="label" style={{ color: colors.textMuted }}>
+                  {card.title}
+                </ThemedText>
+                <ThemedText
+                  style={[styles.aiCardValue, { color: severityColor(card.severity, colors) }]}
+                  numberOfLines={1}
+                >
+                  {card.value}
+                </ThemedText>
+                <ThemedText type="caption" style={{ color: colors.textMuted }}>
+                  {card.description}
+                </ThemedText>
+              </View>
+            </GlassCard>
+          ))}
+        </View>
+      )}
+
+      {/* Recommendations */}
+      {insights.recommendations.length > 0 && (
+        <View style={styles.aiSubSection}>
+          <ThemedText type="caption" style={[styles.aiSubLabel, { color: colors.textMuted }]}>
+            Recommendations
+          </ThemedText>
+          {insights.recommendations.map((rec, i) => (
+            <GlassCard key={i} padded={false}>
+              <View style={styles.aiRecRow}>
+                <View style={[styles.aiRecIcon, { backgroundColor: colors.gold + '18', borderColor: colors.gold + '44' }]}>
+                  <IconSymbol size={14} name="star.fill" color={colors.gold} />
+                </View>
+                <View style={styles.aiRecCopy}>
+                  <ThemedText type="bodyBold" style={styles.aiRecTitle}>
+                    {rec.title}
+                  </ThemedText>
+                  <ThemedText type="caption" style={{ color: colors.textSecondary }}>
+                    {rec.description}
+                  </ThemedText>
+                  {rec.estimatedImpact ? (
+                    <ThemedText type="caption" style={{ color: colors.primaryGlow, fontWeight: '700' }}>
+                      {rec.estimatedImpact}
+                    </ThemedText>
+                  ) : null}
+                </View>
+              </View>
+            </GlassCard>
+          ))}
+        </View>
+      )}
+
+      {/* Patterns */}
+      {insights.patterns.length > 0 && (
+        <View style={styles.aiSubSection}>
+          <ThemedText type="caption" style={[styles.aiSubLabel, { color: colors.textMuted }]}>
+            Spending Patterns
+          </ThemedText>
+          {insights.patterns.map((pattern, i) => (
+            <GlassCard key={i} padded={false}>
+              <View style={styles.aiRecRow}>
+                <View style={[styles.aiRecIcon, { backgroundColor: colors.blue + '18', borderColor: colors.blue + '44' }]}>
+                  <IconSymbol size={14} name="chart.bar.fill" color={colors.blue} />
+                </View>
+                <View style={styles.aiRecCopy}>
+                  <ThemedText type="bodyBold" style={styles.aiRecTitle}>
+                    {pattern.title}
+                  </ThemedText>
+                  <ThemedText type="caption" style={{ color: colors.textSecondary }}>
+                    {pattern.description}
+                  </ThemedText>
+                </View>
+              </View>
+            </GlassCard>
+          ))}
+        </View>
+      )}
+
+      {/* Refresh button */}
+      <TouchableOpacity
+        activeOpacity={isRefreshing ? 1 : 0.75}
+        onPress={isRefreshing ? undefined : onRefresh}
+        style={styles.aiRefreshButton}
+      >
+        {isRefreshing
+          ? <ActivityIndicator size="small" color={colors.textMuted} />
+          : <IconSymbol size={13} name="arrow.counterclockwise" color={colors.textMuted} />}
+        <ThemedText type="caption" style={{ color: colors.textMuted }}>
+          {isRefreshing ? 'Refreshing...' : 'Refresh insights'}
+        </ThemedText>
+      </TouchableOpacity>
+    </View>
+  );
+}
+
+function toneToVariant(tone: InsightTone): 'purple' | 'warn' | 'default' {
+  if (tone === 'positive') return 'purple';
+  if (tone === 'warning') return 'warn';
+  return 'default';
+}
+
+function severityColor(
+  severity: InsightSeverity,
+  colors: (typeof Colors)['dark'],
+): string {
+  if (severity === 'positive') return colors.success;
+  if (severity === 'warning') return colors.accentHi;
+  return colors.primaryGlow;
+}
+
+function formatGeneratedAt(iso: string): string {
+  const diffMs = Date.now() - new Date(iso).getTime();
+  const diffMin = Math.round(diffMs / 60_000);
+  if (diffMin < 1) return 'Generated just now';
+  if (diffMin === 1) return 'Generated 1 min ago';
+  if (diffMin < 60) return `Generated ${diffMin} min ago`;
+  const diffH = Math.round(diffMin / 60);
+  return `Generated ${diffH} hour${diffH === 1 ? '' : 's'} ago`;
 }
 
 function emptyWeeklyData() {
@@ -403,5 +623,107 @@ const styles = StyleSheet.create({
     gap: Spacing.sm,
     paddingHorizontal: Spacing.lg,
     paddingVertical: Spacing.sm,
+  },
+
+  // ── AI Insights ──────────────────────────────────────────────────────────────
+  aiEmptyState: {
+    minHeight: 108,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.lg,
+  },
+  aiEmptyTitle: {
+    color: '#FFFFFF',
+    textAlign: 'center',
+  },
+  aiLoadingState: {
+    minHeight: 72,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.lg,
+  },
+  retryButton: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 3,
+  },
+  aiPanel: {
+    gap: Spacing.md,
+  },
+  aiSummary: {
+    padding: Spacing.lg,
+    gap: Spacing.sm,
+  },
+  aiSummaryHeadline: {
+    fontSize: 18,
+    fontWeight: '800',
+    color: '#FFFFFF',
+    lineHeight: 24,
+  },
+  aiGeneratedAt: {
+    marginTop: 2,
+  },
+  aiCardGrid: {
+    flexDirection: 'row',
+    flexWrap: 'wrap',
+    gap: Spacing.sm,
+  },
+  aiCardItem: {
+    width: '47.5%',
+  },
+  aiCardInner: {
+    padding: Spacing.md,
+    gap: 4,
+    minHeight: 90,
+    justifyContent: 'center',
+  },
+  aiCardValue: {
+    fontSize: 20,
+    fontWeight: '800',
+    lineHeight: 26,
+  },
+  aiSubSection: {
+    gap: Spacing.sm,
+  },
+  aiSubLabel: {
+    fontWeight: '700',
+    letterSpacing: 0.6,
+    textTransform: 'uppercase',
+    paddingHorizontal: 2,
+  },
+  aiRecRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    gap: Spacing.md,
+    padding: Spacing.md,
+  },
+  aiRecIcon: {
+    width: 32,
+    height: 32,
+    borderRadius: Radii.full,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flexShrink: 0,
+    marginTop: 2,
+  },
+  aiRecCopy: {
+    flex: 1,
+    gap: 3,
+  },
+  aiRecTitle: {
+    fontSize: 14,
+    color: '#FFFFFF',
+  },
+  aiRefreshButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    paddingVertical: Spacing.sm,
+    minHeight: 36,
   },
 });
