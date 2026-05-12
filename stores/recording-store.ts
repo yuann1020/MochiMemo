@@ -29,6 +29,7 @@ interface RecordingState {
   setError: (message: string | null) => void;
   setExtractionError: (message: string | null) => void;
   setTranscriptionError: (message: string | null) => void;
+  resetReviewState: () => void;
   reset: () => void;
 }
 
@@ -80,5 +81,15 @@ export const useRecordingStore = create<RecordingState>((set) => ({
     set(errorMessage ? { errorMessage, status: 'error' } : { errorMessage }),
   setExtractionError: (extractionErrorMessage) => set({ extractionErrorMessage }),
   setTranscriptionError: (transcriptionErrorMessage) => set({ transcriptionErrorMessage }),
+  resetReviewState: () =>
+    set({
+      transcript: null,
+      reviewDraft: null,
+      pendingExpenses: [],
+      clarificationQuestion: null,
+      errorMessage: null,
+      extractionErrorMessage: null,
+      transcriptionErrorMessage: null,
+    }),
   reset: () => set(initialState),
 }));

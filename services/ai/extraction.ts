@@ -8,6 +8,8 @@ import type {
 
 const EXTRACTION_FUNCTION = 'extract-expense';
 const LOW_CONFIDENCE_THRESHOLD = 0.75;
+const NO_EXPENSE_CLARIFICATION =
+  'No valid expense detected. Try saying: I spent RM18 on lunch.';
 
 export async function extractExpenses(
   text: string,
@@ -43,12 +45,17 @@ export async function extractExpenses(
     return normalizeExtractionResult(data, 'openai', null);
   } catch (error) {
     const fallback = mockExtractExpenses(normalizedText, currency);
+    const usedMockExpense = fallback.expenses.length > 0;
+
     return {
       ...fallback,
-      errorMessage:
-        error instanceof Error
+      errorMessage: usedMockExpense
+        ? error instanceof Error
           ? `AI extraction failed. Using local mock parsing instead. ${error.message}`
-          : 'AI extraction failed. Using local mock parsing instead.',
+          : 'AI extraction failed. Using local mock parsing instead.'
+        : error instanceof Error
+          ? `AI extraction failed. No valid expense was detected. ${error.message}`
+          : 'AI extraction failed. No valid expense was detected.',
     };
   }
 }
@@ -57,6 +64,10 @@ export function mockExtractExpenses(
   text: string,
   currency = DEFAULT_CURRENCY,
 ): AIExtractionResult {
+  if (!hasExpenseAmount(text)) {
+    return noExpenseResult('mock', null);
+  }
+
   const clauses = text
     .split(/\s*(?:,|;|\band\b)\s*/i)
     .map((clause) => clause.trim())
@@ -74,7 +85,9 @@ export function mockExtractExpenses(
     expenses,
     needsClarification,
     clarificationQuestion: needsClarification
-      ? 'Can you confirm the missing amount or merchant?'
+      ? expenses.length === 0
+        ? NO_EXPENSE_CLARIFICATION
+        : 'Can you confirm the missing amount or merchant?'
       : null,
     source: 'mock',
     errorMessage: null,
@@ -101,7 +114,9 @@ function normalizeExtractionResult(
     typeof raw.clarificationQuestion === 'string' && raw.clarificationQuestion.trim()
       ? raw.clarificationQuestion.trim()
       : needsClarification
-        ? 'Can you confirm the missing expense details?'
+        ? expenses.length === 0
+          ? NO_EXPENSE_CLARIFICATION
+          : 'Can you confirm the missing expense details?'
         : null;
 
   return {
@@ -119,12 +134,16 @@ function normalizeExpense(value: unknown): ExtractedExpense | null {
   const amount = safeNumber(value.amount);
   if (amount <= 0) return null;
 
+  const merchant = safeText(value.merchant, '');
+  const rawCategory = safeText(value.category, '');
+  if (!isMeaningfulMerchant(merchant) || !rawCategory) return null;
+
   return {
     id: createExpenseId(),
     amount,
     currency: normalizeCurrency(value.currency),
-    merchant: safeText(value.merchant, 'Unknown'),
-    category: normalizeCategory(value.category),
+    merchant,
+    category: normalizeCategory(rawCategory),
     date: safeText(value.date, 'today'),
     note: safeText(value.note, 'Expense'),
     confidence: normalizeConfidence(value.confidence),
@@ -135,30 +154,70 @@ function parseMockExpenseClause(
   clause: string,
   currency: string,
 ): ExtractedExpense | null {
-  const amountMatch = clause.match(/\bRM\s*([0-9]+(?:\.[0-9]{1,2})?)\b/i);
-  if (!amountMatch || amountMatch.index === undefined) return null;
+  const amountMatch = findExpenseAmount(clause);
+  if (!amountMatch) return null;
 
-  const amount = Number(amountMatch[1]);
+  const amount = amountMatch.amount;
   if (!Number.isFinite(amount) || amount <= 0) return null;
 
-  const merchant = parseMerchant(clause, amountMatch.index, amountMatch[0].length);
+  const merchant = parseMerchant(clause, amountMatch.index, amountMatch.length);
+  if (!isMeaningfulMerchant(merchant)) return null;
+
   const category = inferCategory(`${clause} ${merchant ?? ''}`);
-  const confidence = merchant ? 0.82 : 0.58;
-  const displayMerchant = merchant ?? 'Unknown';
 
   return {
     id: createExpenseId(),
     amount,
     currency: normalizeCurrency(currency),
-    merchant: displayMerchant,
+    merchant,
     category,
     date: 'today',
     note:
-      displayMerchant === 'Unknown'
-        ? clause
-        : `${displayMerchant} ${category === 'Transport' ? 'expense' : 'purchase'}`,
-    confidence,
+      category === 'Transport'
+        ? `${merchant} expense`
+        : `${merchant} purchase`,
+    confidence: 0.82,
   };
+}
+
+function noExpenseResult(
+  source: AIExtractionResult['source'],
+  errorMessage: string | null,
+): AIExtractionResult {
+  return {
+    expenses: [],
+    needsClarification: true,
+    clarificationQuestion: NO_EXPENSE_CLARIFICATION,
+    source,
+    errorMessage,
+  };
+}
+
+function hasExpenseAmount(text: string): boolean {
+  return findExpenseAmount(text) !== null;
+}
+
+function findExpenseAmount(text: string): { amount: number; index: number; length: number } | null {
+  const patterns = [
+    /\bRM\s*([0-9]+(?:\.[0-9]{1,2})?)\b/i,
+    /\b([0-9]+(?:\.[0-9]{1,2})?)\s*(?:ringgit|rm)\b/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = text.match(pattern);
+    if (!match || match.index === undefined) continue;
+
+    const amount = Number(match[1]);
+    if (!Number.isFinite(amount) || amount <= 0) continue;
+
+    return {
+      amount,
+      index: match.index,
+      length: match[0].length,
+    };
+  }
+
+  return null;
 }
 
 function parseMerchant(
@@ -191,6 +250,13 @@ function cleanMerchantText(value: string): string {
     .replace(/[^a-z0-9&' -]/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
+}
+
+function isMeaningfulMerchant(value: string | null | undefined): value is string {
+  if (!value?.trim()) return false;
+
+  const normalized = value.trim().toLowerCase();
+  return !['unknown', 'expense', 'purchase', 'spending'].includes(normalized);
 }
 
 function inferCategory(value: string): string {

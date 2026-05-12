@@ -81,15 +81,19 @@ Deno.serve(async (request) => {
             role: 'system',
             content: [
               'You extract personal expense data from short Malaysian spending notes.',
+              'Only use the current user text. Do not reuse previous context.',
               'Return only expenses that are present in the user text.',
               'Support multiple expenses in one sentence.',
               `Use ${currency} as the currency unless the user clearly specifies another currency.`,
-              'Use merchant as the item, place, or service name. If unknown, use "Unknown".',
+              'Use merchant as the item, place, or service name.',
+              'If the input is not about spending, purchases, payments, bills, transport, food, shopping, or money, return expenses: [], needsClarification: true.',
+              'If amount, merchant, or category is missing, do not invent it. Return expenses: [] or omit that expense and ask a short clarification question.',
               `Choose category from: ${categoryOptions.join(', ')}.`,
               'Use "today" for relative current-day spending. Preserve explicit dates if present.',
               'Confidence is a decimal from 0 to 1.',
               'If confidence is below 0.75, set needsClarification true and ask one short clarification question.',
               'Do not invent amounts, merchants, or dates that are not implied by the text.',
+              'Do not infer Bubble Tea unless the user said it.',
             ].join(' '),
           },
           {
@@ -190,7 +194,7 @@ function sanitizeResult(value: unknown, currency: string): ExpenseExtractionResu
       note: safeText(expense.note, 'Expense'),
       confidence: clamp(safeNumber(expense.confidence), 0, 1),
     }))
-    .filter((expense) => expense.amount > 0);
+    .filter((expense) => expense.amount > 0 && isMeaningfulText(expense.merchant));
 
   const lowestConfidence = expenses.reduce(
     (lowest, expense) => Math.min(lowest, expense.confidence),
@@ -252,6 +256,11 @@ function safeText(value: unknown, fallback: string): string {
 
 function safeNumber(value: unknown): number {
   return typeof value === 'number' && Number.isFinite(value) ? value : 0;
+}
+
+function isMeaningfulText(value: string): boolean {
+  const normalized = value.trim().toLowerCase();
+  return Boolean(normalized) && !['unknown', 'expense', 'purchase', 'spending'].includes(normalized);
 }
 
 function clamp(value: number, min: number, max: number): number {
