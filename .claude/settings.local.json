@@ -16,7 +16,8 @@
       "PowerShell(Test-Path *)",
       "PowerShell(Get-ChildItem -Recurse \"C:\\\\Users\\\\Louis Lau\\\\Desktop\\\\MochiMemo-handoff\\\\mochimemo\" | ForEach-Object { $_.FullName })",
       "WebFetch(domain:claude.ai)",
-      "Bash(npx tsc *)"
+      "Bash(npx tsc *)",
+      "Bash(npm run *)"
     ]
   }
 }

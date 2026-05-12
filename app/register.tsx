@@ -1,10 +1,11 @@
 import { useRouter } from 'expo-router';
-import { useState } from 'react';
+import { type ReactNode, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
   ScrollView,
   StyleSheet,
+  Text,
   TextInput,
   TouchableOpacity,
   View,
@@ -19,17 +20,23 @@ import { PrimaryButton } from '@/components/ui/premium';
 import { Colors, Radii, Spacing } from '@/constants/theme';
 import { useAuth } from '@/hooks/use-auth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import { isExpoGo } from '@/utils/env';
 
 export default function RegisterScreen() {
   const router = useRouter();
   const colors = Colors[useColorScheme() ?? 'dark'];
-  const { clearError, error, loading, signUp } = useAuth();
+  const { clearError, error, loading, signUp, signInWithGoogle } = useAuth();
+
   const [displayName, setDisplayName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [googleLoading, setGoogleLoading] = useState(false);
+
   const isSubmitting = loading;
   const canSubmit =
     displayName.trim().length > 0 &&
@@ -37,6 +44,8 @@ export default function RegisterScreen() {
     password.length >= 6 &&
     confirmPassword.length >= 6 &&
     !isSubmitting;
+
+  const displayError = localError ?? error;
 
   async function handleRegister() {
     if (!canSubmit) return;
@@ -53,13 +62,27 @@ export default function RegisterScreen() {
     try {
       const result = await signUp({ displayName, email, password });
       if (result.needsEmailConfirmation) {
-        setNotice('Account created. Check your email to confirm before logging in.');
+        setNotice('Account created. Check your email to confirm before signing in.');
         return;
       }
-
       router.replace('/');
     } catch (authError) {
       setLocalError(authError instanceof Error ? authError.message : 'Could not create account.');
+    }
+  }
+
+  async function handleGoogleSignIn() {
+    setLocalError(null);
+    setNotice(null);
+    clearError();
+    setGoogleLoading(true);
+    try {
+      await signInWithGoogle(true);
+      router.replace('/');
+    } catch (err) {
+      setLocalError(err instanceof Error ? err.message : 'Google sign-in failed.');
+    } finally {
+      setGoogleLoading(false);
     }
   }
 
@@ -73,87 +96,167 @@ export default function RegisterScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <TouchableOpacity activeOpacity={0.76} onPress={() => router.back()} style={styles.backButton}>
+            {/* Back button */}
+            <TouchableOpacity
+              activeOpacity={0.76}
+              onPress={() => router.back()}
+              style={[styles.backButton, { backgroundColor: 'rgba(167,139,250,0.10)', borderColor: 'rgba(167,139,250,0.20)' }]}
+            >
               <IconSymbol size={18} name="arrow.left" color={colors.text} />
             </TouchableOpacity>
 
+            {/* Header — above card */}
             <View style={styles.header}>
-              <View style={styles.logoMark}>
-                <IconSymbol size={24} name="sparkles" color="#FFFFFF" />
-              </View>
-              <ThemedText type="title" style={styles.title}>
-                Create account
+              <ThemedText style={[styles.appLabel, { color: colors.primaryGlow }]}>
+                MochiMemo
               </ThemedText>
-              <ThemedText type="body" style={{ color: colors.textSecondary, textAlign: 'center' }}>
-                Save expenses privately to your own MochiMemo profile.
+              <ThemedText style={styles.title}>Create account</ThemedText>
+              <ThemedText style={[styles.subtitle, { color: colors.textMuted }]}>
+                Start tracking your spending with AI.
               </ThemedText>
             </View>
 
+            {/* Auth card */}
             <GlassCard padded={false}>
               <View style={styles.form}>
+                {/* Status banner */}
+                {(displayError || notice) && (
+                  <View
+                    style={[
+                      styles.statusBanner,
+                      notice
+                        ? { backgroundColor: 'rgba(96,165,250,0.10)', borderColor: 'rgba(96,165,250,0.30)' }
+                        : { backgroundColor: 'rgba(244,114,182,0.10)', borderColor: 'rgba(244,114,182,0.32)' },
+                    ]}
+                  >
+                    <IconSymbol
+                      size={14}
+                      name={notice ? 'info.circle.fill' : 'exclamationmark.triangle.fill'}
+                      color={notice ? colors.blue : colors.accentHi}
+                    />
+                    <ThemedText
+                      style={[
+                        styles.statusText,
+                        { color: notice ? colors.blue : colors.accentHi },
+                      ]}
+                    >
+                      {notice ?? displayError}
+                    </ThemedText>
+                  </View>
+                )}
+
                 <AuthInput
-                  label="Display name"
                   value={displayName}
                   onChangeText={setDisplayName}
-                  placeholder="Louis"
+                  placeholder="Display name"
                 />
+
                 <AuthInput
-                  label="Email"
                   value={email}
                   onChangeText={setEmail}
-                  placeholder="you@example.com"
+                  placeholder="Email address"
                   keyboardType="email-address"
                   autoCapitalize="none"
                 />
+
                 <AuthInput
-                  label="Password"
                   value={password}
                   onChangeText={setPassword}
-                  placeholder="At least 6 characters"
-                  secureTextEntry
+                  placeholder="Password (min. 6 characters)"
+                  secureTextEntry={!showPassword}
+                  rightAction={
+                    <TouchableOpacity
+                      onPress={() => setShowPassword((v) => !v)}
+                      style={styles.eyeButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <IconSymbol
+                        size={17}
+                        name={showPassword ? 'eye.slash' : 'eye'}
+                        color={colors.textMuted}
+                      />
+                    </TouchableOpacity>
+                  }
                 />
+
                 <AuthInput
-                  label="Confirm password"
                   value={confirmPassword}
                   onChangeText={setConfirmPassword}
                   placeholder="Confirm password"
-                  secureTextEntry
+                  secureTextEntry={!showConfirm}
+                  rightAction={
+                    <TouchableOpacity
+                      onPress={() => setShowConfirm((v) => !v)}
+                      style={styles.eyeButton}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <IconSymbol
+                        size={17}
+                        name={showConfirm ? 'eye.slash' : 'eye'}
+                        color={colors.textMuted}
+                      />
+                    </TouchableOpacity>
+                  }
                 />
 
-                {(localError || error || notice) && (
-                  <GlassCard variant={notice ? 'purple' : 'warn'} padded={false}>
-                    <View style={styles.notice}>
-                      <IconSymbol
-                        size={16}
-                        name={notice ? 'shield.fill' : 'exclamationmark.triangle.fill'}
-                        color={notice ? colors.blue : colors.accentHi}
-                      />
-                      <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
-                        {localError ?? notice ?? error}
-                      </ThemedText>
-                    </View>
-                  </GlassCard>
-                )}
-
                 <PrimaryButton
-                  label={isSubmitting ? 'Creating...' : 'Create account'}
+                  label={isSubmitting ? 'Creating account...' : 'Create account'}
                   icon="arrow.right"
                   onPress={handleRegister}
                   disabled={!canSubmit}
                 />
+
+                {/* Divider */}
+                <View style={styles.dividerRow}>
+                  <View style={[styles.dividerLine, { backgroundColor: 'rgba(167,139,250,0.18)' }]} />
+                  <ThemedText style={[styles.dividerText, { color: colors.textMuted }]}>
+                    or continue with
+                  </ThemedText>
+                  <View style={[styles.dividerLine, { backgroundColor: 'rgba(167,139,250,0.18)' }]} />
+                </View>
+
+                {/* Google button */}
+                <View style={styles.googleSection}>
+                  <TouchableOpacity
+                    activeOpacity={isExpoGo ? 1 : 0.82}
+                    onPress={isExpoGo ? undefined : handleGoogleSignIn}
+                    disabled={googleLoading || isSubmitting || isExpoGo}
+                    style={[
+                      styles.googleButton,
+                      { borderColor: 'rgba(167,139,250,0.28)', backgroundColor: 'rgba(255,255,255,0.04)' },
+                      (googleLoading || isSubmitting || isExpoGo) && styles.googleButtonDisabled,
+                    ]}
+                  >
+                    <View style={styles.googleBadge}>
+                      <Text style={styles.googleG}>G</Text>
+                    </View>
+                    <ThemedText style={[styles.googleLabel, { color: colors.text }]}>
+                      {googleLoading ? 'Opening Google...' : 'Continue with Google'}
+                    </ThemedText>
+                  </TouchableOpacity>
+                  {isExpoGo && (
+                    <ThemedText style={[styles.expoGoNote, { color: colors.textMuted }]}>
+                      Google Sign-In requires a development build. Use email login for now.
+                    </ThemedText>
+                  )}
+                </View>
               </View>
             </GlassCard>
 
-            <TouchableOpacity
-              activeOpacity={0.78}
-              onPress={() => router.replace('/login')}
-              style={[styles.switchButton, { borderColor: colors.accentHi + '44' }]}
-            >
-              <IconSymbol size={15} name="arrow.left" color={colors.accentHi} />
-              <ThemedText type="bodyBold" style={{ color: colors.accentHi }}>
-                Back to login
+            {/* Footer */}
+            <View style={styles.footer}>
+              <ThemedText style={[styles.footerText, { color: colors.textMuted }]}>
+                Already have an account?
               </ThemedText>
-            </TouchableOpacity>
+              <TouchableOpacity
+                activeOpacity={0.78}
+                onPress={() => router.replace('/login')}
+              >
+                <ThemedText style={[styles.footerLink, { color: colors.accentHi }]}>
+                  {' '}Sign in
+                </ThemedText>
+              </TouchableOpacity>
+            </View>
           </ScrollView>
         </SafeAreaView>
       </KeyboardAvoidingView>
@@ -162,29 +265,35 @@ export default function RegisterScreen() {
 }
 
 function AuthInput({
-  label,
   value,
   onChangeText,
   placeholder,
   secureTextEntry = false,
   keyboardType = 'default',
   autoCapitalize = 'sentences',
+  rightAction,
 }: {
-  label: string;
   value: string;
   onChangeText: (text: string) => void;
   placeholder: string;
   secureTextEntry?: boolean;
   keyboardType?: 'default' | 'email-address';
   autoCapitalize?: 'none' | 'sentences';
+  rightAction?: ReactNode;
 }) {
   const colors = Colors[useColorScheme() ?? 'dark'];
+  const [focused, setFocused] = useState(false);
 
   return (
-    <View style={styles.inputGroup}>
-      <ThemedText type="label" style={{ color: colors.textMuted }}>
-        {label}
-      </ThemedText>
+    <View
+      style={[
+        styles.inputWrap,
+        {
+          borderColor: focused ? colors.primary : 'rgba(167,139,250,0.22)',
+          backgroundColor: 'rgba(6,8,26,0.62)',
+        },
+      ]}
+    >
       <TextInput
         value={value}
         onChangeText={onChangeText}
@@ -194,8 +303,11 @@ function AuthInput({
         keyboardType={keyboardType}
         autoCapitalize={autoCapitalize}
         autoCorrect={false}
-        style={[styles.input, { color: colors.text }]}
+        onFocus={() => setFocused(true)}
+        onBlur={() => setFocused(false)}
+        style={[styles.inputField, { color: colors.text }]}
       />
+      {rightAction}
     </View>
   );
 }
@@ -206,78 +318,164 @@ const styles = StyleSheet.create({
   content: {
     flexGrow: 1,
     justifyContent: 'center',
-    gap: Spacing.lg,
-    padding: Spacing.xl,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing['3xl'],
+    gap: Spacing['2xl'],
   },
+
+  // Back button
   backButton: {
     position: 'absolute',
-    top: Spacing.xl,
+    top: Spacing['2xl'],
     left: Spacing.xl,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(167,139,250,0.12)',
     borderWidth: 1,
-    borderColor: 'rgba(167,139,250,0.18)',
   },
+
+  // Header
   header: {
     alignItems: 'center',
     gap: Spacing.sm,
-    marginBottom: Spacing.sm,
+    marginTop: Spacing['2xl'],
   },
-  logoMark: {
-    width: 58,
-    height: 58,
-    borderRadius: 29,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#F472B6',
-    shadowColor: '#F472B6',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.65,
-    shadowRadius: 22,
-    elevation: 8,
+  appLabel: {
+    fontSize: 13,
+    fontWeight: '700',
+    letterSpacing: 1.2,
+    textTransform: 'uppercase',
+    marginBottom: Spacing.xs,
   },
   title: {
-    color: '#FFFFFF',
-    fontSize: 30,
-    lineHeight: 36,
+    fontSize: 34,
+    fontWeight: '800',
+    color: '#F8F7FF',
+    lineHeight: 40,
+    textAlign: 'center',
   },
+  subtitle: {
+    fontSize: 15,
+    lineHeight: 22,
+    textAlign: 'center',
+    fontWeight: '400',
+  },
+
+  // Form card
   form: {
-    gap: Spacing.lg,
+    gap: Spacing.md,
     padding: Spacing.lg,
   },
-  inputGroup: {
-    gap: Spacing.xs,
-  },
-  input: {
-    minHeight: 50,
-    borderRadius: Radii.lg,
-    borderWidth: 1,
-    borderColor: 'rgba(167,139,250,0.20)',
-    backgroundColor: 'rgba(6,8,26,0.64)',
-    paddingHorizontal: Spacing.md,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-  notice: {
-    minHeight: 48,
+
+  // Status banner
+  statusBanner: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: Spacing.sm,
     paddingHorizontal: Spacing.md,
     paddingVertical: Spacing.sm,
+    borderRadius: Radii.md,
+    borderWidth: 1,
   },
-  switchButton: {
-    minHeight: 52,
+  statusText: {
+    flex: 1,
+    fontSize: 13,
+    lineHeight: 18,
+    fontWeight: '500',
+  },
+
+  // Input
+  inputWrap: {
+    height: 52,
+    borderRadius: Radii.lg,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+  },
+  inputField: {
+    flex: 1,
+    height: '100%',
+    fontSize: 15,
+    fontWeight: '500',
+  },
+  eyeButton: {
+    paddingLeft: Spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+
+  // Divider
+  dividerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    marginVertical: Spacing.xs,
+  },
+  dividerLine: {
+    flex: 1,
+    height: 1,
+  },
+  dividerText: {
+    fontSize: 12,
+    fontWeight: '500',
+  },
+
+  // Google button
+  googleButton: {
+    height: 52,
     borderRadius: Radii.full,
     borderWidth: 1,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: Spacing.sm,
-    backgroundColor: 'rgba(244,114,182,0.10)',
+  },
+  googleButtonDisabled: {
+    opacity: 0.38,
+  },
+  googleSection: {
+    gap: Spacing.xs,
+  },
+  expoGoNote: {
+    fontSize: 12,
+    lineHeight: 16,
+    textAlign: 'center',
+    fontWeight: '400',
+  },
+  googleBadge: {
+    width: 22,
+    height: 22,
+    borderRadius: 11,
+    backgroundColor: '#FFFFFF',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  googleG: {
+    fontSize: 13,
+    fontWeight: '800',
+    color: '#4285F4',
+    lineHeight: 16,
+  },
+  googleLabel: {
+    fontSize: 15,
+    fontWeight: '600',
+  },
+
+  // Footer
+  footer: {
+    flexDirection: 'row',
+    justifyContent: 'center',
+    alignItems: 'center',
+  },
+  footerText: {
+    fontSize: 14,
+    fontWeight: '400',
+  },
+  footerLink: {
+    fontSize: 14,
+    fontWeight: '700',
   },
 });

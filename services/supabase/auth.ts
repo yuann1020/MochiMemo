@@ -1,4 +1,6 @@
 import type { Session, User } from '@supabase/supabase-js';
+import * as Linking from 'expo-linking';
+import * as WebBrowser from 'expo-web-browser';
 
 import { supabase } from '@/services/supabase/client';
 import { getProfile, upsertProfileForUser } from '@/services/supabase/profiles';
@@ -60,6 +62,47 @@ export async function signUpWithPassword({
     : null;
 
   return { session: data.session, user: data.user, profile };
+}
+
+export async function signInWithOAuthGoogle(): Promise<{ session: Session | null; user: User | null }> {
+  const redirectTo = Linking.createURL('/');
+
+  const { data, error } = await supabase.auth.signInWithOAuth({
+    provider: 'google',
+    options: {
+      redirectTo,
+      skipBrowserRedirect: true,
+    },
+  });
+
+  if (error) throw error;
+
+  if (!data.url) {
+    throw new Error(
+      'Google Sign-In is not enabled. Go to Supabase Dashboard → Authentication → Providers and enable Google.',
+    );
+  }
+
+  const result = await WebBrowser.openAuthSessionAsync(data.url, redirectTo);
+
+  if (result.type === 'cancel' || result.type === 'dismiss') {
+    throw new Error('Sign-in was cancelled.');
+  }
+
+  if (result.type !== 'success') {
+    throw new Error('Google sign-in did not complete. Please try again.');
+  }
+
+  const { error: exchangeError } = await supabase.auth.exchangeCodeForSession(result.url);
+  if (exchangeError) throw exchangeError;
+
+  const { data: sessionData, error: sessionError } = await supabase.auth.getSession();
+  if (sessionError) throw sessionError;
+
+  return {
+    session: sessionData.session,
+    user: sessionData.session?.user ?? null,
+  };
 }
 
 export async function signOutCurrentUser(): Promise<void> {

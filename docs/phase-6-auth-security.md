@@ -114,9 +114,40 @@ EXPO_PUBLIC_SUPABASE_ANON_KEY=
 9. In Supabase Table Editor, confirm each expense row has `profile_id` equal to the correct auth user id.
 10. Log back in as user A and confirm user B expenses are not visible.
 
+## Google Sign-In and Expo Go
+
+Google Sign-In uses the `mochimemo://` deep-link redirect to return control to the app after OAuth.
+Expo Go cannot intercept custom scheme redirects reliably — the browser opens, the user signs in,
+but the app never receives the callback, leaving them stuck in Safari.
+
+**In Expo Go**, the "Continue with Google" button is automatically disabled and a note is shown:
+> "Google Sign-In requires a development build. Use email login for now."
+
+This behaviour is driven by `utils/env.ts` → `isExpoGo`, which checks
+`Constants.executionEnvironment === 'storeClient'`.  No Google Sign-In code is removed.
+
+**To test Google Sign-In**, use a development or preview build:
+
+```bash
+# Install EAS CLI if needed
+npm install -g eas-cli
+
+# Development build (installable on device, full native modules)
+eas build --platform ios --profile development
+
+# Preview build (TestFlight-style, closer to production)
+eas build --platform ios --profile preview
+```
+
+Before building, complete the Supabase + Google Cloud setup described in the Edge Functions section
+above (redirect URL `mochimemo://`, Google OAuth client ID/secret in Supabase Dashboard).
+
+**Email/password auth works fully in Expo Go** — register, sign in, Remember Me, and sign out
+all function without a dev build.
+
 ## Limitations
 
 - Password reset is a visual placeholder only.
-- OAuth providers are not implemented.
+- Google Sign-In requires a development build; disabled automatically in Expo Go.
 - Legacy demo rows are preserved but hidden by RLS.
 - Edge Functions may still be deployed with `--no-verify-jwt` during local testing; database writes are protected by RLS either way.

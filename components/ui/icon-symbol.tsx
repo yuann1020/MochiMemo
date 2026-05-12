@@ -51,6 +51,8 @@ const MAPPING = {
   'shield.fill':                             'shield',
   'tag.fill':                                'local-offer',
   'exclamationmark.triangle.fill':           'warning',
+  'eye':                                     'visibility',
+  'eye.slash':                               'visibility-off',
 } as IconMapping;
 
 /**
