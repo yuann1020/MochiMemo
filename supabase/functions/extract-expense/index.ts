@@ -48,6 +48,9 @@ Deno.serve(async (request) => {
   }
 
   try {
+    const authError = await authenticateRequest(request);
+    if (authError) return authError;
+
     const openAiApiKey = Deno.env.get('OPENAI_API_KEY');
     if (!openAiApiKey) {
       return json({ error: 'OPENAI_API_KEY is not configured for this Edge Function.' }, 500);
@@ -170,6 +173,32 @@ Deno.serve(async (request) => {
     return json({ error: message }, 500);
   }
 });
+
+async function authenticateRequest(request: Request): Promise<Response | null> {
+  const authHeader = request.headers.get('authorization');
+  if (!authHeader?.toLowerCase().startsWith('bearer ')) {
+    return json({ error: 'Authentication required.' }, 401);
+  }
+
+  const supabaseUrl = Deno.env.get('SUPABASE_URL');
+  const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY');
+  if (!supabaseUrl || !supabaseAnonKey) {
+    return json({ error: 'Supabase auth environment is not configured.' }, 500);
+  }
+
+  const response = await fetch(`${supabaseUrl.replace(/\/$/, '')}/auth/v1/user`, {
+    headers: {
+      authorization: authHeader,
+      apikey: supabaseAnonKey,
+    },
+  });
+
+  if (!response.ok) {
+    return json({ error: 'Invalid or expired session.' }, 401);
+  }
+
+  return null;
+}
 
 async function readJsonBody(request: Request): Promise<Record<string, unknown>> {
   const body = await request.json().catch(() => null);

@@ -60,7 +60,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       });
 
     const { data } = supabase.auth.onAuthStateChange((_event, session) => {
-      void syncSession(session, set);
+      setTimeout(() => {
+        void syncSession(session, set);
+      }, 0);
     });
 
     authSubscriptionCleanup = () => {
@@ -93,12 +95,13 @@ export const useAuthStore = create<AuthState>((set, get) => ({
 
     try {
       const { session, user, profile } = await signUpWithPassword(credentials);
+      const activeUser = session?.user ?? null;
       const needsEmailConfirmation = !session || !user;
 
       set({
         session,
-        user,
-        profile,
+        user: activeUser,
+        profile: activeUser ? profile : null,
         loading: false,
         initialized: true,
         error: needsEmailConfirmation

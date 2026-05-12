@@ -8,6 +8,7 @@ Phase 6 adds Supabase email/password auth and replaces the Phase 4 demo RLS poli
 - `app/(tabs)/_layout.tsx` blocks the tab UI until auth initialization completes.
 - `/login` signs in with email/password.
 - `/register` creates an email/password account and creates a `profiles` row when Supabase returns a session.
+- A database trigger also creates a `profiles` row whenever a Supabase Auth user is created.
 - The profile id is the same uuid as `auth.users.id`.
 - `/profile` shows the signed-in email, profile display name, currency, monthly budget, and a logout button.
 
@@ -53,6 +54,12 @@ npx supabase db push
 
 The included migration preserves existing demo rows. It adds the `profiles.id -> auth.users.id` foreign key as `NOT VALID` so historical demo rows do not block the migration. New profile rows must still reference real Supabase auth users.
 
+The follow-up migration adds:
+
+- `public.create_profile_for_auth_user()`
+- `on_auth_user_created_create_profile` trigger on `auth.users`
+- a backfill for any existing auth users without profile rows
+
 After old demo data is no longer needed, delete or migrate the demo rows and validate the constraint:
 
 ```sql
@@ -66,19 +73,22 @@ The mobile client now passes the current Supabase access token to:
 - `extract-expense`
 - `transcribe-audio`
 
-During development, these can still be deployed in demo-compatible mode:
-
-```bash
-npx supabase functions deploy extract-expense --no-verify-jwt
-npx supabase functions deploy transcribe-audio --no-verify-jwt
-```
-
-Recommended after auth is verified:
+Both Edge Functions now validate the `Authorization: Bearer <access token>` header before calling OpenAI. Deploy normally after applying Phase 6:
 
 ```bash
 npx supabase functions deploy extract-expense
 npx supabase functions deploy transcribe-audio
 ```
+
+If you temporarily deploy with `--no-verify-jwt` for local troubleshooting, the functions still require a valid Supabase user token at runtime.
+
+Required Supabase function secrets:
+
+```bash
+OPENAI_API_KEY=
+```
+
+`SUPABASE_URL` and `SUPABASE_ANON_KEY` are provided by the Supabase Functions runtime and are used only server-side to validate user tokens.
 
 Do not put `OPENAI_API_KEY`, `OPENAI_TRANSCRIBE_MODEL`, or service role keys in Expo env.
 
