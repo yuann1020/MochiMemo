@@ -3,6 +3,7 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   createExpense,
   createExpenses,
+  deleteAllUserExpenses,
   deleteExpense,
   getExpenseById,
   getExpenseStats,
@@ -12,6 +13,7 @@ import {
   updateExpense,
 } from '@/services/supabase/expenses';
 import { useAuth } from '@/hooks/use-auth';
+import type { UpdateProfileInput } from '@/services/supabase/profiles';
 import type { NewExpense, UpdateExpense } from '@/types/expense';
 
 export const expenseQueryKeys = {
@@ -119,6 +121,26 @@ export function useDeleteExpense() {
 
   return useMutation({
     mutationFn: (id: string) => deleteExpense(id),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expenseQueryKeys.all(user?.id) }),
+  });
+}
+
+export function useUpdateProfile() {
+  const queryClient = useQueryClient();
+  const { user, updateProfile } = useAuth();
+
+  return useMutation({
+    mutationFn: (input: UpdateProfileInput) => updateProfile(input),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: expenseQueryKeys.all(user?.id) }),
+  });
+}
+
+export function useDeleteAllExpenses() {
+  const queryClient = useQueryClient();
+  const { user } = useAuth();
+
+  return useMutation({
+    mutationFn: () => deleteAllUserExpenses(),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: expenseQueryKeys.all(user?.id) }),
   });
 }

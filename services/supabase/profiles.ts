@@ -9,6 +9,13 @@ export const DEFAULT_MONTHLY_BUDGET = 2000;
 
 type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 type ProfileInsert = Database['public']['Tables']['profiles']['Insert'];
+type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
+
+export interface UpdateProfileInput {
+  displayName?: string | null;
+  currency?: string;
+  monthlyBudget?: number;
+}
 
 export async function getProfile(userId: string): Promise<Profile | null> {
   const { data, error } = await supabase
@@ -36,6 +43,23 @@ export async function upsertProfileForUser(
   const { data, error } = await supabase
     .from('profiles')
     .upsert(row, { onConflict: 'id' })
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return rowToProfile(data);
+}
+
+export async function updateProfile(userId: string, input: UpdateProfileInput): Promise<Profile> {
+  const row: ProfileUpdate = {};
+  if (input.displayName !== undefined) row.display_name = input.displayName?.trim() || null;
+  if (input.currency !== undefined) row.currency = input.currency.trim().toUpperCase();
+  if (input.monthlyBudget !== undefined) row.monthly_budget = input.monthlyBudget;
+
+  const { data, error } = await supabase
+    .from('profiles')
+    .update(row)
+    .eq('id', userId)
     .select('*')
     .single();
 

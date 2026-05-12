@@ -13,7 +13,11 @@ import {
   type RegisterCredentials,
 } from '@/services/supabase/auth';
 import { supabase } from '@/services/supabase/client';
-import { upsertProfileForUser as upsertProfileRowForUser } from '@/services/supabase/profiles';
+import {
+  upsertProfileForUser as upsertProfileRowForUser,
+  updateProfile as updateProfileService,
+  type UpdateProfileInput,
+} from '@/services/supabase/profiles';
 import type { Profile } from '@/types/expense';
 
 const REMEMBER_ME_KEY = 'mochimemo_remember_me';
@@ -32,6 +36,7 @@ interface AuthState {
   signInWithGoogle: (rememberMe?: boolean) => Promise<void>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<Profile | null>;
+  updateProfile: (input: UpdateProfileInput) => Promise<Profile>;
   upsertProfileForUser: (displayName?: string | null) => Promise<Profile | null>;
   clearError: () => void;
 }
@@ -182,6 +187,15 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     }
 
     const profile = await loadProfileForUser(user);
+    set({ profile, error: null });
+    return profile;
+  },
+
+  updateProfile: async (input) => {
+    const user = get().user;
+    if (!user) throw new Error('Not signed in.');
+
+    const profile = await updateProfileService(user.id, input);
     set({ profile, error: null });
     return profile;
   },

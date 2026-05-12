@@ -124,6 +124,15 @@ export async function deleteExpense(id: string): Promise<void> {
   if (error) throw error;
 }
 
+export async function deleteAllUserExpenses(): Promise<void> {
+  const userId = await requireCurrentUserId();
+  const { error } = await supabase
+    .from('expenses')
+    .delete()
+    .eq('profile_id', userId);
+  if (error) throw error;
+}
+
 export async function getExpenseStats(date = new Date()): Promise<ExpenseStats> {
   const userId = await getCurrentUserId();
   if (!userId) return emptyExpenseStats(date);
