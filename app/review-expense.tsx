@@ -33,6 +33,7 @@ export default function ReviewExpenseScreen() {
   const pendingExpenses = useRecordingStore((state) => state.pendingExpenses);
   const clarificationQuestion = useRecordingStore((state) => state.clarificationQuestion);
   const extractionErrorMessage = useRecordingStore((state) => state.extractionErrorMessage);
+  const transcriptionErrorMessage = useRecordingStore((state) => state.transcriptionErrorMessage);
   const updateDraft = useRecordingStore((state) => state.updateReviewDraft);
   const markSaved = useRecordingStore((state) => state.markReviewSaved);
   const resetRecordingFlow = useRecordingStore((state) => state.reset);
@@ -107,6 +108,8 @@ export default function ReviewExpenseScreen() {
   const isSaving = createExpensesMutation.isPending;
   const confidenceMessage = extractionErrorMessage
     ? 'Using local mock fallback because AI extraction failed.'
+    : draft.transcriptionError || transcriptionErrorMessage
+      ? 'Transcription used a clearly labeled demo fallback.'
     : pendingExpenses.length === 0 && clarificationQuestion
       ? 'AI needs one more detail before confident parsing.'
     : pendingExpenses.length > 1
@@ -144,7 +147,7 @@ export default function ReviewExpenseScreen() {
               <View style={styles.previewInner}>
                 <View style={styles.previewCopy}>
                   <ThemedText type="label" style={{ color: colors.textMuted }}>
-                    {draft.sourceMode === 'voice' ? 'Mock transcript' : 'You typed'}
+                    {draft.sourceMode === 'voice' ? 'Voice Transcript' : 'You typed'}
                   </ThemedText>
                   <ThemedText type="bodyBold" style={{ color: '#FFFFFF' }}>
                     {draft.inputText}
@@ -152,6 +155,11 @@ export default function ReviewExpenseScreen() {
                   {draft.audioUri && (
                     <ThemedText type="caption" numberOfLines={1} style={{ color: colors.textMuted }}>
                       Local audio: {draft.audioUri}
+                    </ThemedText>
+                  )}
+                  {draft.transcriptionModel && !draft.transcriptionError && (
+                    <ThemedText type="caption" numberOfLines={1} style={{ color: colors.textMuted }}>
+                      Transcribed by {draft.transcriptionModel}
                     </ThemedText>
                   )}
                 </View>
@@ -169,6 +177,17 @@ export default function ReviewExpenseScreen() {
                   <IconSymbol size={18} name="exclamationmark.triangle.fill" color={colors.accentHi} />
                   <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
                     {extractionErrorMessage}
+                  </ThemedText>
+                </View>
+              </GlassCard>
+            )}
+
+            {(draft.transcriptionError || transcriptionErrorMessage) && (
+              <GlassCard variant="warn" padded={false}>
+                <View style={styles.noticeCard}>
+                  <IconSymbol size={18} name="exclamationmark.triangle.fill" color={colors.accentHi} />
+                  <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
+                    {draft.transcriptionError ?? transcriptionErrorMessage}
                   </ThemedText>
                 </View>
               </GlassCard>

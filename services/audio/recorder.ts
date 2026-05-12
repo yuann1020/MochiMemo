@@ -7,6 +7,9 @@ export type LocalRecordingStatus =
   | 'requestingPermission'
   | 'recording'
   | 'stopped'
+  | 'transcribing'
+  | 'extracting'
+  | 'readyForReview'
   | 'error';
 
 export type ExpenseInputMode = 'voice' | 'type';
@@ -24,6 +27,8 @@ export interface ExpenseReviewDraft {
   date: string;
   note: string;
   confidence: number;
+  transcriptionModel?: string | null;
+  transcriptionError?: string | null;
   saved: boolean;
 }
 
@@ -52,8 +57,19 @@ export function formatRecordingTime(totalSeconds: number): string {
   return `${minutes}:${seconds.toString().padStart(2, '0')}`;
 }
 
-export function createVoiceReviewDraft(audioUri: string | null, durationSeconds: number): ExpenseReviewDraft {
-  const transcript = 'I spent RM18 on bubble tea';
+export function createVoiceReviewDraft({
+  audioUri,
+  durationSeconds,
+  transcript,
+  transcriptionModel = null,
+  transcriptionError = null,
+}: {
+  audioUri: string | null;
+  durationSeconds: number;
+  transcript: string;
+  transcriptionModel?: string | null;
+  transcriptionError?: string | null;
+}): ExpenseReviewDraft {
 
   return {
     id: createLocalId(),
@@ -68,6 +84,8 @@ export function createVoiceReviewDraft(audioUri: string | null, durationSeconds:
     date: formatDisplayDate(new Date()),
     note: durationSeconds > 0 ? `Voice note, ${formatRecordingTime(durationSeconds)}` : 'Voice note',
     confidence: 96,
+    transcriptionModel,
+    transcriptionError,
     saved: false,
   };
 }
@@ -91,6 +109,8 @@ export function createTypedReviewDraft(inputText: string): ExpenseReviewDraft {
     date: formatDisplayDate(new Date()),
     note: normalized,
     confidence: amount > 0 ? 82 : 45,
+    transcriptionModel: null,
+    transcriptionError: null,
     saved: false,
   };
 }
@@ -101,12 +121,16 @@ export function createReviewDraftFromExtractedExpense({
   transcript,
   audioUri,
   expense,
+  transcriptionModel = null,
+  transcriptionError = null,
 }: {
   sourceMode: ExpenseInputMode;
   inputText: string;
   transcript: string | null;
   audioUri: string | null;
   expense: ExtractedExpense;
+  transcriptionModel?: string | null;
+  transcriptionError?: string | null;
 }): ExpenseReviewDraft {
   return {
     id: createLocalId(),
@@ -121,6 +145,8 @@ export function createReviewDraftFromExtractedExpense({
     date: expense.date,
     note: expense.note,
     confidence: toConfidencePercent(expense.confidence),
+    transcriptionModel,
+    transcriptionError,
     saved: false,
   };
 }

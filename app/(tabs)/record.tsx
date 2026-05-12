@@ -27,6 +27,7 @@ import { Colors, Spacing } from '@/constants/theme';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useVoiceRecording } from '@/hooks/use-voice-recording';
 import { extractExpenses } from '@/services/ai/extraction';
+import { transcribeAudio } from '@/services/ai/transcription';
 import {
   createReviewDraftFromExtractedExpense,
   createTypedReviewDraft,
@@ -48,11 +49,15 @@ export default function AddExpenseScreen() {
   const [inputMode, setInputMode] = useState<InputMode>('voice');
   const [typedText, setTypedText] = useState('');
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [voiceFlowError, setVoiceFlowError] = useState<string | null>(null);
   const setReviewDraft = useRecordingStore((state) => state.setReviewDraft);
   const setTranscript = useRecordingStore((state) => state.setTranscript);
   const setPendingExpenses = useRecordingStore((state) => state.setPendingExpenses);
   const setClarificationQuestion = useRecordingStore((state) => state.setClarificationQuestion);
   const setExtractionError = useRecordingStore((state) => state.setExtractionError);
+  const setTranscriptionError = useRecordingStore((state) => state.setTranscriptionError);
+  const setStoreStatus = useRecordingStore((state) => state.setStatus);
   const {
     status,
     isRecording,
@@ -67,14 +72,16 @@ export default function AddExpenseScreen() {
   } = useVoiceRecording();
 
   async function resetForMode(nextMode: InputMode) {
-    if (isExtracting) return;
+    if (isBusy) return;
     if (isRecording) await stopRecording();
     resetRecording();
+    setVoiceFlowError(null);
     setInputMode(nextMode);
   }
 
   async function extractAndOpenReview(fallbackDraft: ExpenseReviewDraft) {
     setIsExtracting(true);
+    setStoreStatus('extracting');
     setExtractionError(null);
     setClarificationQuestion(null);
     setPendingExpenses([]);
@@ -89,6 +96,8 @@ export default function AddExpenseScreen() {
             transcript: fallbackDraft.transcript,
             audioUri: fallbackDraft.audioUri,
             expense: primaryExpense,
+            transcriptionModel: fallbackDraft.transcriptionModel,
+            transcriptionError: fallbackDraft.transcriptionError,
           })
         : fallbackDraft;
 
@@ -97,35 +106,70 @@ export default function AddExpenseScreen() {
       setExtractionError(result.errorMessage);
       setTranscript(reviewDraft.transcript);
       setReviewDraft(reviewDraft);
+      setStoreStatus('readyForReview');
       router.push('../review-expense');
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not extract expenses.';
       setExtractionError(`AI extraction failed. Using local mock parsing instead. ${message}`);
       setTranscript(fallbackDraft.transcript);
       setReviewDraft(fallbackDraft);
+      setStoreStatus('readyForReview');
       router.push('../review-expense');
     } finally {
       setIsExtracting(false);
     }
   }
 
+  async function transcribeAndOpenReview(uri: string, durationSeconds: number) {
+    setIsTranscribing(true);
+    setVoiceFlowError(null);
+    setTranscriptionError(null);
+    setStoreStatus('transcribing');
+
+    try {
+      const transcription = await transcribeAudio(uri);
+      const transcript = transcription.transcript.trim();
+      const draft = createVoiceReviewDraft({
+        audioUri: uri,
+        durationSeconds,
+        transcript,
+        transcriptionModel: transcription.model ?? null,
+        transcriptionError: transcription.error ?? null,
+      });
+
+      if (transcription.error) {
+        setTranscriptionError(transcription.error);
+      }
+
+      setIsTranscribing(false);
+      await extractAndOpenReview(draft);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Could not transcribe recording.';
+      setVoiceFlowError(message);
+      setTranscriptionError(message);
+      setStoreStatus('error');
+    } finally {
+      setIsTranscribing(false);
+    }
+  }
+
   async function handleVoiceAction() {
-    if (isExtracting) return;
+    if (isBusy) return;
 
     if (isRecording) {
       const result = await stopRecording();
       if (!result) return;
 
-      const draft = createVoiceReviewDraft(result.uri, result.durationSeconds);
-      await extractAndOpenReview(draft);
+      await transcribeAndOpenReview(result.uri, result.durationSeconds);
       return;
     }
 
+    setVoiceFlowError(null);
     await startRecording();
   }
 
   async function handleTypedReview() {
-    if (isExtracting) return;
+    if (isBusy) return;
 
     const trimmed = typedText.trim();
     if (!trimmed) return;
@@ -135,11 +179,24 @@ export default function AddExpenseScreen() {
   }
 
   async function handleClear() {
-    if (isExtracting) return;
+    if (isBusy) return;
     if (isRecording) await stopRecording();
     resetRecording();
+    setVoiceFlowError(null);
     setTypedText('');
   }
+
+  async function handleRetryVoice() {
+    if (isBusy || !audioUri) return;
+    await transcribeAndOpenReview(audioUri, durationSeconds);
+  }
+
+  const isBusy = isTranscribing || isExtracting;
+  const voiceStatus: LocalRecordingStatus = isTranscribing
+    ? 'transcribing'
+    : isExtracting
+      ? 'extracting'
+      : status;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -179,16 +236,18 @@ export default function AddExpenseScreen() {
 
             {inputMode === 'voice' ? (
               <VoiceState
-                status={status}
+                status={voiceStatus}
                 isRecording={isRecording}
                 isRequestingPermission={isRequestingPermission}
                 timerLabel={timerLabel}
                 audioUri={audioUri}
                 durationSeconds={durationSeconds}
-                errorMessage={errorMessage}
+                errorMessage={voiceFlowError ?? errorMessage}
+                isTranscribing={isTranscribing}
                 isExtracting={isExtracting}
                 onMicTap={handleVoiceAction}
                 onStopReview={handleVoiceAction}
+                onRetry={handleRetryVoice}
               />
             ) : (
               <TypeState
@@ -213,9 +272,11 @@ function VoiceState({
   audioUri,
   durationSeconds,
   errorMessage,
+  isTranscribing,
   isExtracting,
   onMicTap,
   onStopReview,
+  onRetry,
 }: {
   status: LocalRecordingStatus;
   isRecording: boolean;
@@ -224,11 +285,14 @@ function VoiceState({
   audioUri: string | null;
   durationSeconds: number;
   errorMessage: string | null;
+  isTranscribing: boolean;
   isExtracting: boolean;
   onMicTap: () => void;
   onStopReview: () => void;
+  onRetry: () => void;
 }) {
   const colors = Colors[useColorScheme() ?? 'dark'];
+  const isBusy = isTranscribing || isExtracting;
 
   return (
     <View style={styles.voiceState}>
@@ -250,7 +314,7 @@ function VoiceState({
         </View>
 
         <View style={styles.orbWrap}>
-          <VoiceOrb size={112} isRecording={isRecording} onPress={isExtracting ? undefined : onMicTap} />
+          <VoiceOrb size={112} isRecording={isRecording} onPress={isBusy ? undefined : onMicTap} />
           <View style={[styles.statusPill, { borderColor: statusColor(status, colors) + '55' }]}>
             <View style={[styles.statusDot, { backgroundColor: statusColor(status, colors) }]} />
             <ThemedText type="label" style={{ color: statusColor(status, colors), fontSize: 10 }}>
@@ -283,6 +347,10 @@ function VoiceState({
         <ThemedText type="caption" style={{ color: colors.textSecondary, textAlign: 'center' }}>
           {isRequestingPermission
             ? 'Requesting microphone access...'
+            : isTranscribing
+              ? 'Transcribing your voice securely...'
+              : isExtracting
+                ? 'Finding expenses from your transcript...'
             : isRecording
               ? 'Tap the orb again or stop to review.'
               : 'Tap to speak'}
@@ -322,6 +390,17 @@ function VoiceState({
         </GlassCard>
       )}
 
+      {isTranscribing && (
+        <GlassCard variant="purple" padded={false} style={styles.uriCard}>
+          <View style={styles.loadingInner}>
+            <ActivityIndicator size="small" color={colors.primaryGlow} />
+            <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
+              Transcribing voice securely...
+            </ThemedText>
+          </View>
+        </GlassCard>
+      )}
+
       <View style={styles.voicePrompt}>
         <ThemedText type="body" style={{ color: colors.textSecondary }}>
           Try saying:
@@ -331,7 +410,9 @@ function VoiceState({
 
       <PrimaryButton
         label={
-          isExtracting
+          isTranscribing
+            ? 'Transcribing...'
+            : isExtracting
             ? 'Extracting...'
             : isRecording
               ? 'Stop & Review'
@@ -341,9 +422,13 @@ function VoiceState({
         }
         icon={isRecording ? 'checkmark' : 'mic.fill'}
         onPress={onStopReview}
-        disabled={isRequestingPermission || isExtracting}
+        disabled={isRequestingPermission || isBusy}
         style={styles.voiceActionButton}
       />
+
+      {errorMessage && audioUri && !isRecording && !isBusy && (
+        <SecondaryVoiceRetry onPress={onRetry} />
+      )}
 
       <GlassCard padded={false} style={styles.tipCard}>
         <View style={styles.tipInner}>
@@ -351,12 +436,29 @@ function VoiceState({
           <View style={styles.tipCopy}>
             <ThemedText type="bodyBold">Recording tips</ThemedText>
             <ThemedText type="caption" style={{ color: colors.textMuted }}>
-              Audio stays local. This phase does not upload or transcribe it.
+              Audio is sent only to the secure Supabase transcription function.
             </ThemedText>
           </View>
         </View>
       </GlassCard>
     </View>
+  );
+}
+
+function SecondaryVoiceRetry({ onPress }: { onPress: () => void }) {
+  const colors = Colors[useColorScheme() ?? 'dark'];
+
+  return (
+    <TouchableOpacity
+      activeOpacity={0.78}
+      onPress={onPress}
+      style={[styles.retryButton, { borderColor: colors.accentHi + '44' }]}
+    >
+      <IconSymbol size={15} name="arrow.counterclockwise" color={colors.accentHi} />
+      <ThemedText type="bodyBold" style={{ color: colors.accentHi }}>
+        Retry Transcription
+      </ThemedText>
+    </TouchableOpacity>
   );
 }
 
@@ -439,6 +541,12 @@ function statusLabel(status: LocalRecordingStatus) {
       return 'Recording';
     case 'stopped':
       return 'Stopped';
+    case 'transcribing':
+      return 'Transcribing';
+    case 'extracting':
+      return 'Extracting';
+    case 'readyForReview':
+      return 'Ready';
     case 'error':
       return 'Error';
     case 'idle':
@@ -454,6 +562,11 @@ function statusColor(status: LocalRecordingStatus, colors: typeof Colors.dark) {
     case 'requestingPermission':
       return colors.primaryGlow;
     case 'stopped':
+      return colors.success;
+    case 'transcribing':
+    case 'extracting':
+      return colors.primaryGlow;
+    case 'readyForReview':
       return colors.success;
     case 'error':
       return colors.error;
@@ -565,6 +678,17 @@ const styles = StyleSheet.create({
   },
   voiceActionButton: {
     alignSelf: 'stretch',
+  },
+  retryButton: {
+    minHeight: 46,
+    alignSelf: 'stretch',
+    borderWidth: 1,
+    borderRadius: 999,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: Spacing.sm,
+    backgroundColor: 'rgba(244,114,182,0.10)',
   },
   tipCard: {
     alignSelf: 'stretch',
