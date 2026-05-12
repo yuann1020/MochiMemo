@@ -28,5 +28,8 @@ export interface AIExtractionResult {
 
 export interface TranscriptionResult {
   transcript: string;
-  durationSeconds: number;
+  model?: string;
+  durationMs?: number;
+  error?: string;
+  source: 'openai' | 'mock';
 }

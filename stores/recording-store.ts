@@ -13,6 +13,7 @@ interface RecordingState {
   clarificationQuestion: string | null;
   errorMessage: string | null;
   extractionErrorMessage: string | null;
+  transcriptionErrorMessage: string | null;
 
   setStatus: (status: LocalRecordingStatus) => void;
   setAudioUri: (uri: string | null) => void;
@@ -27,6 +28,7 @@ interface RecordingState {
   setClarificationQuestion: (question: string | null) => void;
   setError: (message: string | null) => void;
   setExtractionError: (message: string | null) => void;
+  setTranscriptionError: (message: string | null) => void;
   reset: () => void;
 }
 
@@ -40,6 +42,7 @@ const initialState = {
   clarificationQuestion: null,
   errorMessage: null,
   extractionErrorMessage: null,
+  transcriptionErrorMessage: null,
 };
 
 export const useRecordingStore = create<RecordingState>((set) => ({
@@ -76,5 +79,6 @@ export const useRecordingStore = create<RecordingState>((set) => ({
   setError: (errorMessage) =>
     set(errorMessage ? { errorMessage, status: 'error' } : { errorMessage }),
   setExtractionError: (extractionErrorMessage) => set({ extractionErrorMessage }),
+  setTranscriptionError: (transcriptionErrorMessage) => set({ transcriptionErrorMessage }),
   reset: () => set(initialState),
 }));
