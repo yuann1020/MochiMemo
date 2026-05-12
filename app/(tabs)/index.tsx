@@ -15,32 +15,27 @@ import {
   SectionHeader,
 } from '@/components/ui/premium';
 import { Colors, Radii, Spacing } from '@/constants/theme';
+import { useExpenseStats } from '@/hooks/use-expenses';
 import { useColorScheme } from '@/hooks/use-color-scheme';
+import type { Expense } from '@/types/expense';
+import { formatCurrency } from '@/utils/currency';
 import { getGreeting } from '@/utils/date';
-
-const MOCK_BUDGET = 2000;
-const MOCK_SPENT = 1247.8;
-const MOCK_REMAINING = MOCK_BUDGET - MOCK_SPENT;
-const BUDGET_PCT = Math.round((MOCK_SPENT / MOCK_BUDGET) * 100);
-
-const CATEGORY_DATA = [
-  { name: 'Food & Drinks', pct: 40, color: '#F472B6' },
-  { name: 'Transport', pct: 25, color: '#A78BFA' },
-  { name: 'Shopping', pct: 20, color: '#FCD34D' },
-  { name: 'Others', pct: 15, color: '#60A5FA' },
-];
-
-const RECENT = [
-  { title: 'Bubble Tea', category: 'Food & Drinks', time: 'Today, 4:50 PM', amount: 'RM 12.50', color: '#F472B6', icon: 'tag.fill' as const },
-  { title: 'Parking', category: 'Transport', time: 'Today, 10:12 AM', amount: 'RM 5.00', color: '#60A5FA', icon: 'creditcard.fill' as const },
-  { title: 'Groceries', category: 'Shopping', time: 'Yesterday, 9:04 PM', amount: 'RM 68.30', color: '#A78BFA', icon: 'banknote.fill' as const },
-];
+import { formatExpenseDateTime, getCategoryColor, getCategoryIcon } from '@/utils/expense-display';
 
 export default function HomeScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'dark';
   const colors = Colors[colorScheme];
+  const statsQuery = useExpenseStats();
+  const stats = statsQuery.data;
   const greeting = getGreeting().split(' ').slice(0, 2).join(' ');
+  const displayName = stats?.profile?.displayName ?? 'Louis';
+  const monthlyBudget = stats?.monthlyBudget ?? 2000;
+  const monthlySpent = stats?.monthlySpent ?? 0;
+  const remainingBudget = stats?.remainingBudget ?? monthlyBudget;
+  const budgetPercentUsed = stats?.budgetPercentUsed ?? 0;
+  const categoryData = stats?.categoryTotals ?? [];
+  const recentExpenses = stats?.recentExpenses ?? [];
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -55,7 +50,7 @@ export default function HomeScreen() {
           <View style={styles.header}>
             <View style={styles.headerCopy}>
               <ThemedText type="caption" style={styles.greeting}>
-                {greeting}, Louis
+                {greeting}, {displayName}
               </ThemedText>
               <ThemedText type="title" style={styles.heroTitle}>
                 Track smartly,{'\n'}live freely.
@@ -85,7 +80,7 @@ export default function HomeScreen() {
                 style={[styles.trendPill, { borderColor: colors.accent + '45', backgroundColor: colors.accent + '12' }]}
               >
                 <ThemedText type="label" style={{ color: colors.accentHi, fontSize: 10 }}>
-                  25% vs last month
+                  {statsQuery.isError ? 'Offline data' : 'Live totals'}
                 </ThemedText>
                 <IconSymbol size={11} name="arrow.right" color={colors.accentHi} />
               </TouchableOpacity>
@@ -93,34 +88,49 @@ export default function HomeScreen() {
 
             <View style={styles.overviewBody}>
               <View style={styles.budgetStats}>
-                <BudgetLine label="Budget" value={`RM ${MOCK_BUDGET.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`} />
+                <BudgetLine label="Budget" value={formatCurrency(monthlyBudget)} />
                 <View style={styles.statDivider} />
-                <BudgetLine label="Spent" value={`RM ${MOCK_SPENT.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`} />
+                <BudgetLine label="Spent" value={formatCurrency(monthlySpent)} />
                 <View style={styles.statDivider} />
                 <BudgetLine
                   label="Remaining"
-                  value={`RM ${MOCK_REMAINING.toLocaleString('en-MY', { minimumFractionDigits: 2 })}`}
+                  value={formatCurrency(remainingBudget)}
                   accent
                 />
               </View>
 
-              <DonutChartPlaceholder value={`${BUDGET_PCT}%`} size={112} centerLabel="of budget" />
+              <DonutChartPlaceholder value={`${budgetPercentUsed}%`} size={112} centerLabel="of budget" />
 
               <View style={styles.legend}>
-                {CATEGORY_DATA.map((item) => (
-                  <View key={item.name} style={styles.legendRow}>
+                {categoryData.length > 0 ? categoryData.map((item) => (
+                  <View key={item.category} style={styles.legendRow}>
                     <View style={[styles.legendDot, { backgroundColor: item.color, shadowColor: item.color }]} />
                     <ThemedText type="caption" style={styles.legendName} numberOfLines={1}>
-                      {item.name}
+                      {item.category}
                     </ThemedText>
                     <ThemedText type="caption" style={{ color: colors.textMuted }}>
-                      {item.pct}%
+                      {item.percent}%
                     </ThemedText>
                   </View>
-                ))}
+                )) : (
+                  <ThemedText type="caption" style={{ color: colors.textMuted }}>
+                    No category data yet.
+                  </ThemedText>
+                )}
               </View>
             </View>
           </GlassCard>
+
+          {statsQuery.isError && (
+            <GlassCard variant="warn" padded={false}>
+              <View style={styles.stateNotice}>
+                <IconSymbol size={16} name="exclamationmark.triangle.fill" color={colors.accentHi} />
+                <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
+                  Could not load Supabase expenses. Showing safe empty totals.
+                </ThemedText>
+              </View>
+            </GlassCard>
+          )}
 
           <View style={styles.metricsRow}>
             <MetricCard label="Savings Streak" value="18" unit="days" icon="chart.bar.fill" color={colors.accentHi} />
@@ -163,18 +173,40 @@ export default function HomeScreen() {
           <SectionHeader title="Recent Expenses" actionLabel="View all" onActionPress={() => router.push('../history')} />
 
           <View style={styles.expenseList}>
-            {RECENT.map((expense) => (
+            {recentExpenses.length > 0 ? recentExpenses.map((expense) => (
               <ExpenseRow
-                key={expense.title}
-                {...expense}
-                onPress={() => router.push('../expense-detail')}
+                key={expense.id}
+                {...expenseToRow(expense)}
+                onPress={() => router.push({ pathname: '../expense-detail', params: { id: expense.id } })}
               />
-            ))}
+            )) : (
+              <GlassCard padded={false}>
+                <View style={styles.emptyRecent}>
+                  <ThemedText type="bodyBold" style={{ color: '#FFFFFF' }}>
+                    No expenses saved yet.
+                  </ThemedText>
+                  <ThemedText type="caption" style={{ color: colors.textMuted }}>
+                    Try typing Bubble tea RM12, parking RM5.
+                  </ThemedText>
+                </View>
+              </GlassCard>
+            )}
           </View>
         </ScrollView>
       </SafeAreaView>
     </View>
   );
+}
+
+function expenseToRow(expense: Expense) {
+  return {
+    title: expense.merchant,
+    category: expense.category,
+    time: formatExpenseDateTime(expense.spentAt),
+    amount: formatCurrency(expense.amount, expense.currency),
+    color: getCategoryColor(expense.category),
+    icon: getCategoryIcon(expense.category),
+  };
 }
 
 function BudgetLine({ label, value, accent = false }: { label: string; value: string; accent?: boolean }) {
@@ -371,5 +403,20 @@ const styles = StyleSheet.create({
   },
   expenseList: {
     gap: Spacing.sm,
+  },
+  stateNotice: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
+  },
+  emptyRecent: {
+    minHeight: 72,
+    justifyContent: 'center',
+    gap: 3,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
   },
 });

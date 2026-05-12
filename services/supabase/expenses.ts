@@ -1,63 +1,270 @@
-import { supabase } from './client';
-import type { Expense, NewExpense } from '@/types/expense';
+import { DEFAULT_CURRENCY } from '@/constants/config';
+import { supabase } from '@/services/supabase/client';
+import type { Database } from '@/types/database';
+import type {
+  Expense,
+  ExpenseCategoryTotal,
+  ExpenseSource,
+  ExpenseStats,
+  NewExpense,
+  Profile,
+  UpdateExpense,
+  WeeklyExpenseTotal,
+} from '@/types/expense';
+import { getCategoryColor, normalizeCategoryLabel } from '@/utils/expense-display';
 
-export async function saveExpenses(expenses: NewExpense[]): Promise<Expense[]> {
-  const { data: { user } } = await supabase.auth.getUser();
-  if (!user) throw new Error('Not authenticated');
+export const DEMO_PROFILE_ID = '00000000-0000-0000-0000-000000000001';
+export const DEFAULT_MONTHLY_BUDGET = 2000;
 
-  const rows = expenses.map((e) => ({
-    user_id:        user.id,
-    amount:         e.amount,
-    currency:       e.currency,
-    category_id:    e.categoryId,
-    description:    e.description,
-    raw_transcript: e.rawTranscript ?? null,
-    ai_confidence:  e.aiConfidence ?? null,
-    recorded_at:    e.recordedAt,
-  }));
+type ExpenseRow = Database['public']['Tables']['expenses']['Row'];
+type ExpenseInsert = Database['public']['Tables']['expenses']['Insert'];
+type ExpenseUpdate = Database['public']['Tables']['expenses']['Update'];
+type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
-  const { data, error } = await supabase.from('expenses').insert(rows).select();
+export async function getDemoProfile(): Promise<Profile | null> {
+  const { data, error } = await supabase
+    .from('profiles')
+    .select('*')
+    .eq('id', DEMO_PROFILE_ID)
+    .maybeSingle();
+
   if (error) throw error;
+  return data ? rowToProfile(data) : null;
+}
 
+export async function createExpense(expense: NewExpense): Promise<Expense> {
+  const created = await createExpenses([expense]);
+  return created[0];
+}
+
+export async function createExpenses(expenses: NewExpense[]): Promise<Expense[]> {
+  if (expenses.length === 0) return [];
+
+  const rows = expenses.map(newExpenseToInsert);
+  const { data, error } = await supabase
+    .from('expenses')
+    .insert(rows)
+    .select('*')
+    .order('spent_at', { ascending: false });
+
+  if (error) throw error;
   return data.map(rowToExpense);
 }
 
-export async function getExpenses(limit = 20, offset = 0): Promise<Expense[]> {
+export async function getRecentExpenses(limit = 3): Promise<Expense[]> {
   const { data, error } = await supabase
     .from('expenses')
     .select('*')
-    .order('recorded_at', { ascending: false })
-    .range(offset, offset + limit - 1);
+    .order('spent_at', { ascending: false })
+    .limit(limit);
 
   if (error) throw error;
   return data.map(rowToExpense);
 }
 
-export async function getMonthlyTotal(year: number, month: number): Promise<number> {
-  const start = new Date(year, month - 1, 1).toISOString();
-  const end   = new Date(year, month, 0, 23, 59, 59).toISOString();
-
-  const { data, error } = await supabase
-    .from('expenses')
-    .select('amount')
-    .gte('recorded_at', start)
-    .lte('recorded_at', end);
-
-  if (error) throw error;
-  return data.reduce((sum, row) => sum + Number(row.amount), 0);
+export async function getMonthlyExpenses(date = new Date()): Promise<Expense[]> {
+  const { start, end } = getMonthRange(date);
+  return getExpensesByDateRange(start, end);
 }
 
-function rowToExpense(row: Record<string, unknown>): Expense {
+export async function getExpensesByDateRange(start: Date, end: Date): Promise<Expense[]> {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('*')
+    .gte('spent_at', start.toISOString())
+    .lte('spent_at', end.toISOString())
+    .order('spent_at', { ascending: false });
+
+  if (error) throw error;
+  return data.map(rowToExpense);
+}
+
+export async function getExpenseById(id: string): Promise<Expense | null> {
+  const { data, error } = await supabase
+    .from('expenses')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle();
+
+  if (error) throw error;
+  return data ? rowToExpense(data) : null;
+}
+
+export async function updateExpense(id: string, patch: UpdateExpense): Promise<Expense> {
+  const row = updateExpenseToRow(patch);
+  const { data, error } = await supabase
+    .from('expenses')
+    .update(row)
+    .eq('id', id)
+    .select('*')
+    .single();
+
+  if (error) throw error;
+  return rowToExpense(data);
+}
+
+export async function deleteExpense(id: string): Promise<void> {
+  const { error } = await supabase.from('expenses').delete().eq('id', id);
+  if (error) throw error;
+}
+
+export async function getExpenseStats(date = new Date()): Promise<ExpenseStats> {
+  const [profile, monthlyExpenses, recentExpenses] = await Promise.all([
+    getDemoProfile(),
+    getMonthlyExpenses(date),
+    getRecentExpenses(3),
+  ]);
+
+  const monthlyBudget = profile?.monthlyBudget ?? DEFAULT_MONTHLY_BUDGET;
+  const monthlySpent = sumExpenses(monthlyExpenses);
+  const remainingBudget = monthlyBudget - monthlySpent;
+  const budgetPercentUsed = monthlyBudget > 0
+    ? Math.min(100, Math.round((monthlySpent / monthlyBudget) * 100))
+    : 0;
+
   return {
-    id:            row.id as string,
-    userId:        row.user_id as string,
-    amount:        Number(row.amount),
-    currency:      row.currency as string,
-    categoryId:    row.category_id as Expense['categoryId'],
-    description:   row.description as string,
-    rawTranscript: row.raw_transcript as string | undefined,
-    aiConfidence:  row.ai_confidence != null ? Number(row.ai_confidence) : undefined,
-    recordedAt:    row.recorded_at as string,
-    createdAt:     row.created_at as string,
+    profile,
+    monthlyBudget,
+    monthlySpent,
+    remainingBudget,
+    budgetPercentUsed,
+    categoryTotals: buildCategoryTotals(monthlyExpenses),
+    weeklyTotals: buildWeeklyTotals(monthlyExpenses, date),
+    recentExpenses,
   };
+}
+
+export function rowToExpense(row: ExpenseRow): Expense {
+  return {
+    id: row.id,
+    profileId: row.profile_id,
+    amount: toNumber(row.amount),
+    currency: row.currency ?? DEFAULT_CURRENCY,
+    merchant: row.merchant,
+    category: normalizeCategory(row.category),
+    note: row.note,
+    spentAt: row.spent_at,
+    source: normalizeSource(row.source),
+    confidence: row.confidence == null ? null : toNumber(row.confidence),
+    rawInput: row.raw_input,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function rowToProfile(row: ProfileRow): Profile {
+  return {
+    id: row.id,
+    displayName: row.display_name,
+    currency: row.currency ?? DEFAULT_CURRENCY,
+    monthlyBudget: row.monthly_budget == null
+      ? DEFAULT_MONTHLY_BUDGET
+      : toNumber(row.monthly_budget),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+}
+
+function newExpenseToInsert(expense: NewExpense): ExpenseInsert {
+  return {
+    profile_id: expense.profileId ?? DEMO_PROFILE_ID,
+    amount: expense.amount,
+    currency: expense.currency ?? DEFAULT_CURRENCY,
+    merchant: expense.merchant.trim() || 'Unknown',
+    category: normalizeCategory(expense.category),
+    note: expense.note?.trim() || null,
+    spent_at: expense.spentAt ?? new Date().toISOString(),
+    source: expense.source ?? 'manual',
+    confidence: expense.confidence ?? null,
+    raw_input: expense.rawInput?.trim() || null,
+  };
+}
+
+function updateExpenseToRow(expense: UpdateExpense): ExpenseUpdate {
+  const row: ExpenseUpdate = {};
+
+  if (expense.amount != null) row.amount = expense.amount;
+  if (expense.currency != null) row.currency = expense.currency;
+  if (expense.merchant != null) row.merchant = expense.merchant.trim() || 'Unknown';
+  if (expense.category != null) row.category = normalizeCategory(expense.category);
+  if (expense.note !== undefined) row.note = expense.note?.trim() || null;
+  if (expense.spentAt != null) row.spent_at = expense.spentAt;
+  if (expense.source != null) row.source = expense.source;
+  if (expense.confidence !== undefined) row.confidence = expense.confidence;
+  if (expense.rawInput !== undefined) row.raw_input = expense.rawInput?.trim() || null;
+
+  return row;
+}
+
+function buildCategoryTotals(expenses: Expense[]): ExpenseCategoryTotal[] {
+  const monthlySpent = sumExpenses(expenses);
+  const totals = expenses.reduce<Record<string, { total: number; count: number }>>((acc, expense) => {
+    const category = normalizeCategory(expense.category);
+    acc[category] ??= { total: 0, count: 0 };
+    acc[category].total += expense.amount;
+    acc[category].count += 1;
+    return acc;
+  }, {});
+
+  return Object.entries(totals)
+    .map(([category, value]) => ({
+      category,
+      total: value.total,
+      count: value.count,
+      percent: monthlySpent > 0 ? Math.round((value.total / monthlySpent) * 100) : 0,
+      color: getCategoryColor(category),
+    }))
+    .sort((a, b) => b.total - a.total);
+}
+
+function buildWeeklyTotals(expenses: Expense[], date: Date): WeeklyExpenseTotal[] {
+  const weeks = [
+    { label: 'Week 1', start: 1, end: 7 },
+    { label: 'Week 2', start: 8, end: 14 },
+    { label: 'Week 3', start: 15, end: 21 },
+    { label: 'Week 4', start: 22, end: 31 },
+  ];
+  const totals = weeks.map((week) => ({
+    label: week.label,
+    total: expenses
+      .filter((expense) => {
+        const spentAt = new Date(expense.spentAt);
+        return (
+          spentAt.getFullYear() === date.getFullYear() &&
+          spentAt.getMonth() === date.getMonth() &&
+          spentAt.getDate() >= week.start &&
+          spentAt.getDate() <= week.end
+        );
+      })
+      .reduce((sum, expense) => sum + expense.amount, 0),
+  }));
+  const maxTotal = Math.max(1, ...totals.map((week) => week.total));
+
+  return totals.map((week) => ({
+    ...week,
+    percent: Math.min(100, Math.round((week.total / maxTotal) * 100)),
+  }));
+}
+
+function sumExpenses(expenses: Expense[]): number {
+  return expenses.reduce((sum, expense) => sum + expense.amount, 0);
+}
+
+function getMonthRange(date: Date): { start: Date; end: Date } {
+  const start = new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+  const end = new Date(date.getFullYear(), date.getMonth() + 1, 0, 23, 59, 59, 999);
+  return { start, end };
+}
+
+function normalizeSource(value: string): ExpenseSource {
+  if (value === 'type' || value === 'voice' || value === 'manual') return value;
+  return 'manual';
+}
+
+function normalizeCategory(value: string): string {
+  return normalizeCategoryLabel(value);
+}
+
+function toNumber(value: number | string): number {
+  return typeof value === 'number' ? value : Number(value);
 }

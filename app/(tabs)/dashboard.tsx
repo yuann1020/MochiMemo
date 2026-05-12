@@ -12,25 +12,22 @@ import {
   SectionHeader,
 } from '@/components/ui/premium';
 import { Colors, Spacing } from '@/constants/theme';
+import { useExpenseStats } from '@/hooks/use-expenses';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-
-const WEEKLY_DATA = [
-  { label: 'Week 1', thisMonth: 72, lastMonth: 56, value: 'RM 1K' },
-  { label: 'Week 2', thisMonth: 78, lastMonth: 48, value: 'RM 750' },
-  { label: 'Week 3', thisMonth: 100, lastMonth: 66, value: 'RM 500' },
-  { label: 'Week 4', thisMonth: 92, lastMonth: 60, value: 'RM 250' },
-];
-
-const CATEGORY_DATA = [
-  { name: 'Food & Drinks', pct: 40, color: '#F472B6' },
-  { name: 'Transport', pct: 25, color: '#A78BFA' },
-  { name: 'Shopping', pct: 20, color: '#FCD34D' },
-  { name: 'Others', pct: 15, color: '#60A5FA' },
-];
+import { formatCurrency } from '@/utils/currency';
 
 export default function InsightsScreen() {
   const colorScheme = useColorScheme() ?? 'dark';
   const colors = Colors[colorScheme];
+  const statsQuery = useExpenseStats();
+  const stats = statsQuery.data;
+  const monthlySpent = stats?.monthlySpent ?? 0;
+  const monthlyBudget = stats?.monthlyBudget ?? 2000;
+  const remainingBudget = stats?.remainingBudget ?? monthlyBudget;
+  const budgetPercentUsed = stats?.budgetPercentUsed ?? 0;
+  const categoryData = stats?.categoryTotals ?? [];
+  const weeklyData = stats?.weeklyTotals ?? [];
+  const hasData = monthlySpent > 0;
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -58,15 +55,26 @@ export default function InsightsScreen() {
             <View style={styles.heroInsight}>
               <View style={styles.heroCopy}>
                 <ThemedText type="bodyBold" style={styles.heroTitle}>
-                  You spent 28% less{'\n'}than last month.
+                  {hasData
+                    ? `You logged ${formatCurrency(monthlySpent)}\nthis month.`
+                    : 'No spending data\nyet this month.'}
                 </ThemedText>
                 <ThemedText type="caption" style={{ color: colors.textSecondary }}>
-                  Great job. Keep it up.
+                  {hasData ? 'Category totals are live from Supabase.' : 'Saved expenses will appear here.'}
                 </ThemedText>
               </View>
               <View style={styles.heroChart}>
-                {[20, 34, 48, 58, 74].map((height, index) => (
-                  <View key={index} style={[styles.heroBar, { height, backgroundColor: index === 4 ? colors.accent : colors.primary }]} />
+                {(weeklyData.length ? weeklyData : emptyWeeklyData()).map((week, index) => (
+                  <View
+                    key={index}
+                    style={[
+                      styles.heroBar,
+                      {
+                        height: Math.max(8, week.percent),
+                        backgroundColor: index === 4 ? colors.accent : colors.primary,
+                      },
+                    ]}
+                  />
                 ))}
                 <IconSymbol size={18} name="arrow.right" color={colors.primaryGlow} />
               </View>
@@ -93,11 +101,11 @@ export default function InsightsScreen() {
                 ))}
               </View>
               <View style={styles.barGroups}>
-                {WEEKLY_DATA.map((week) => (
+                {(weeklyData.length ? weeklyData : emptyWeeklyData()).map((week) => (
                   <View key={week.label} style={styles.barGroup}>
                     <View style={styles.dualBars}>
-                      <View style={[styles.chartBar, { height: `${week.thisMonth}%` as any, backgroundColor: colors.primaryGlow }]} />
-                      <View style={[styles.chartBar, { height: `${week.lastMonth}%` as any, backgroundColor: colors.accentHi }]} />
+                      <View style={[styles.chartBar, { height: `${Math.max(3, week.percent)}%` as any, backgroundColor: colors.primaryGlow }]} />
+                      <View style={[styles.chartBar, { height: `${Math.max(3, Math.round(week.percent * 0.72))}%` as any, backgroundColor: colors.accentHi }]} />
                     </View>
                     <ThemedText type="label" style={styles.weekLabel}>
                       {week.label}
@@ -117,22 +125,37 @@ export default function InsightsScreen() {
             </View>
 
             <View style={styles.categoryBody}>
-              <DonutChartPlaceholder value="RM 1,247.80" centerLabel="Total" size={132} />
+              <DonutChartPlaceholder value={formatCurrency(monthlySpent)} centerLabel="Total" size={132} />
               <View style={styles.categoryLegend}>
-                {CATEGORY_DATA.map((item) => (
-                  <View key={item.name} style={styles.categoryRow}>
+                {categoryData.length > 0 ? categoryData.map((item) => (
+                  <View key={item.category} style={styles.categoryRow}>
                     <View style={[styles.categoryDot, { backgroundColor: item.color, shadowColor: item.color }]} />
                     <ThemedText type="caption" style={styles.categoryName}>
-                      {item.name}
+                      {item.category}
                     </ThemedText>
                     <ThemedText type="caption" style={{ color: colors.textSecondary }}>
-                      {item.pct}%
+                      {item.percent}%
                     </ThemedText>
                   </View>
-                ))}
+                )) : (
+                  <ThemedText type="caption" style={{ color: colors.textMuted }}>
+                    No category data yet.
+                  </ThemedText>
+                )}
               </View>
             </View>
           </GlassCard>
+
+          {statsQuery.isError && (
+            <GlassCard variant="warn" padded={false}>
+              <View style={styles.stateNotice}>
+                <IconSymbol size={16} name="exclamationmark.triangle.fill" color={colors.accentHi} />
+                <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
+                  Could not load Supabase insights.
+                </ThemedText>
+              </View>
+            </GlassCard>
+          )}
 
           <SectionHeader title="Budget Health" />
           <GlassCard>
@@ -140,21 +163,21 @@ export default function InsightsScreen() {
               <View>
                 <ThemedText type="bodyBold">Monthly budget used</ThemedText>
                 <ThemedText type="caption" style={{ color: colors.textMuted }}>
-                  RM 752.20 remaining
+                  {formatCurrency(remainingBudget)} remaining
                 </ThemedText>
               </View>
-              <ThemedText style={styles.healthGrade}>A</ThemedText>
+              <ThemedText style={styles.healthGrade}>{budgetGrade(budgetPercentUsed)}</ThemedText>
             </View>
-            <ProgressBar value={62} color={colors.accent} height={8} />
+            <ProgressBar value={budgetPercentUsed} color={colors.accent} height={8} />
             <View style={styles.healthLabels}>
               <ThemedText type="label" style={{ color: colors.textMuted }}>
                 RM 0
               </ThemedText>
               <ThemedText type="label" style={{ color: colors.textMuted }}>
-                62% used
+                {budgetPercentUsed}% used
               </ThemedText>
               <ThemedText type="label" style={{ color: colors.textMuted }}>
-                RM 2,000
+                {formatCurrency(monthlyBudget)}
               </ThemedText>
             </View>
           </GlassCard>
@@ -162,6 +185,21 @@ export default function InsightsScreen() {
       </SafeAreaView>
     </View>
   );
+}
+
+function emptyWeeklyData() {
+  return [
+    { label: 'Week 1', total: 0, percent: 0 },
+    { label: 'Week 2', total: 0, percent: 0 },
+    { label: 'Week 3', total: 0, percent: 0 },
+    { label: 'Week 4', total: 0, percent: 0 },
+  ];
+}
+
+function budgetGrade(percentUsed: number): string {
+  if (percentUsed >= 100) return 'C';
+  if (percentUsed >= 85) return 'B';
+  return 'A';
 }
 
 function LegendDot({ label, color }: { label: string; color: string }) {
@@ -357,5 +395,13 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginTop: Spacing.sm,
+  },
+  stateNotice: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
   },
 });

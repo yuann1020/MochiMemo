@@ -9,6 +9,7 @@ import {
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useState } from 'react';
 
 import { ThemedText } from '@/components/themed-text';
 import { GlassCard } from '@/components/ui/glass-card';
@@ -16,9 +17,11 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { ScreenBackground } from '@/components/ui/screen-background';
 import { CategoryPill, PrimaryButton, ProgressBar, SecondaryButton } from '@/components/ui/premium';
 import { Colors, Spacing } from '@/constants/theme';
+import { useCreateExpenses } from '@/hooks/use-expenses';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useRecordingStore } from '@/stores/recording-store';
 import type { ExpenseReviewDraft } from '@/services/audio/recorder';
+import type { NewExpense } from '@/types/expense';
 import { formatCurrency } from '@/utils/currency';
 
 type EditableKey = 'merchant' | 'category' | 'date' | 'note';
@@ -32,6 +35,9 @@ export default function ReviewExpenseScreen() {
   const extractionErrorMessage = useRecordingStore((state) => state.extractionErrorMessage);
   const updateDraft = useRecordingStore((state) => state.updateReviewDraft);
   const markSaved = useRecordingStore((state) => state.markReviewSaved);
+  const resetRecordingFlow = useRecordingStore((state) => state.reset);
+  const createExpensesMutation = useCreateExpenses();
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   if (!draft) {
     return (
@@ -61,7 +67,44 @@ export default function ReviewExpenseScreen() {
     updateDraft({ amount: Number.isFinite(numeric) ? numeric : 0 });
   }
 
+  async function handleSaveExpense() {
+    if (!draft || draft.saved || createExpensesMutation.isPending) return;
+
+    setSaveError(null);
+
+    const mainExpense: NewExpense = {
+      amount: draft.amount,
+      currency: draft.currency,
+      merchant: draft.merchant,
+      category: draft.category,
+      note: draft.note,
+      spentAt: resolveSpentAt(draft.date),
+      source: draft.sourceMode,
+      confidence: draft.confidence / 100,
+      rawInput: draft.inputText,
+    };
+    const additionalExpenseRows: NewExpense[] = additionalExpenses.map((expense) => ({
+      amount: expense.amount,
+      currency: expense.currency,
+      merchant: expense.merchant,
+      category: expense.category,
+      note: expense.note,
+      spentAt: resolveSpentAt(expense.date),
+      source: draft.sourceMode,
+      confidence: expense.confidence,
+      rawInput: draft.inputText,
+    }));
+
+    try {
+      await createExpensesMutation.mutateAsync([mainExpense, ...additionalExpenseRows]);
+      markSaved();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : 'Could not save expense.');
+    }
+  }
+
   const additionalExpenses = pendingExpenses.slice(1);
+  const isSaving = createExpensesMutation.isPending;
   const confidenceMessage = extractionErrorMessage
     ? 'Using local mock fallback because AI extraction failed.'
     : pendingExpenses.length === 0 && clarificationQuestion
@@ -142,6 +185,17 @@ export default function ReviewExpenseScreen() {
               </GlassCard>
             )}
 
+            {saveError && (
+              <GlassCard variant="warn" padded={false}>
+                <View style={styles.noticeCard}>
+                  <IconSymbol size={18} name="exclamationmark.triangle.fill" color={colors.accentHi} />
+                  <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
+                    {saveError}
+                  </ThemedText>
+                </View>
+              </GlassCard>
+            )}
+
             <GlassCard padded={false}>
               <View style={styles.parsedHeader}>
                 <ThemedText type="bodyBold">Parsed Details</ThemedText>
@@ -205,19 +259,30 @@ export default function ReviewExpenseScreen() {
                 <View style={styles.savedNotice}>
                   <IconSymbol size={18} name="checkmark" color={colors.accentHi} />
                   <ThemedText type="bodyBold" style={{ color: '#FFFFFF' }}>
-                    Mock saved locally for this session.
+                    Saved to Supabase.
                   </ThemedText>
                 </View>
               </GlassCard>
             )}
 
             <View style={styles.actionRow}>
-              <SecondaryButton label="Edit Input" onPress={() => router.back()} style={styles.actionButton} />
+              <SecondaryButton
+                label={draft.saved ? 'Home' : 'Edit Input'}
+                onPress={() => {
+                  if (draft.saved) {
+                    resetRecordingFlow();
+                    router.replace('/');
+                    return;
+                  }
+                  router.back();
+                }}
+                style={styles.actionButton}
+              />
               <PrimaryButton
-                label={draft.saved ? 'Saved' : 'Save Expense'}
+                label={isSaving ? 'Saving...' : draft.saved ? 'Saved' : 'Save Expense'}
                 icon="checkmark"
-                onPress={markSaved}
-                disabled={draft.saved}
+                onPress={handleSaveExpense}
+                disabled={draft.saved || isSaving || draft.amount <= 0}
                 style={styles.actionButton}
               />
             </View>
@@ -288,6 +353,14 @@ function EditableField({
       />
     </View>
   );
+}
+
+function resolveSpentAt(value: string): string {
+  const normalized = value.trim().toLowerCase();
+  if (!normalized || normalized.includes('today')) return new Date().toISOString();
+
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? new Date().toISOString() : parsed.toISOString();
 }
 
 const styles = StyleSheet.create({

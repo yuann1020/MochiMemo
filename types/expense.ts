@@ -1,31 +1,73 @@
-export type ExpenseCategoryId =
-  | 'food_drink'
-  | 'transport'
-  | 'shopping'
-  | 'entertainment'
-  | 'health'
-  | 'utilities'
-  | 'education'
-  | 'other';
+export type ExpenseSource = 'manual' | 'type' | 'voice';
 
 export interface ExpenseCategory {
-  id: ExpenseCategoryId;
+  id: string;
   name: string;
   emoji: string;
   color: string;
 }
 
-export interface Expense {
+export interface Profile {
   id: string;
-  userId: string;
-  amount: number;
+  displayName: string | null;
   currency: string;
-  categoryId: ExpenseCategoryId;
-  description: string;
-  rawTranscript?: string;
-  aiConfidence?: number;
-  recordedAt: string;
-  createdAt: string;
+  monthlyBudget: number;
+  createdAt: string | null;
+  updatedAt: string | null;
 }
 
-export type NewExpense = Omit<Expense, 'id' | 'userId' | 'createdAt'>;
+export interface Expense {
+  id: string;
+  profileId: string | null;
+  amount: number;
+  currency: string;
+  merchant: string;
+  category: string;
+  note: string | null;
+  spentAt: string;
+  source: ExpenseSource;
+  confidence: number | null;
+  rawInput: string | null;
+  createdAt: string | null;
+  updatedAt: string | null;
+}
+
+export interface NewExpense {
+  profileId?: string | null;
+  amount: number;
+  currency?: string;
+  merchant: string;
+  category: string;
+  note?: string | null;
+  spentAt?: string;
+  source?: ExpenseSource;
+  confidence?: number | null;
+  rawInput?: string | null;
+}
+
+export type UpdateExpense = Partial<Omit<NewExpense, 'profileId'>>;
+
+export interface ExpenseCategoryTotal {
+  category: string;
+  total: number;
+  count: number;
+  percent: number;
+  color: string;
+}
+
+export interface WeeklyExpenseTotal {
+  label: string;
+  total: number;
+  percent: number;
+}
+
+export interface ExpenseStats {
+  profile: Profile | null;
+  monthlyBudget: number;
+  monthlySpent: number;
+  remainingBudget: number;
+  budgetPercentUsed: number;
+  categoryTotals: ExpenseCategoryTotal[];
+  weeklyTotals: WeeklyExpenseTotal[];
+  recentExpenses: Expense[];
+}
