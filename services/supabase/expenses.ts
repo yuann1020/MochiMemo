@@ -1,5 +1,10 @@
 import { DEFAULT_CURRENCY } from '@/constants/config';
+import { getCurrentSession } from '@/services/supabase/auth';
 import { supabase } from '@/services/supabase/client';
+import {
+  DEFAULT_MONTHLY_BUDGET,
+  getProfile,
+} from '@/services/supabase/profiles';
 import type { Database } from '@/types/database';
 import type {
   Expense,
@@ -13,23 +18,13 @@ import type {
 } from '@/types/expense';
 import { getCategoryColor, normalizeCategoryLabel } from '@/utils/expense-display';
 
-export const DEMO_PROFILE_ID = '00000000-0000-0000-0000-000000000001';
-export const DEFAULT_MONTHLY_BUDGET = 2000;
-
 type ExpenseRow = Database['public']['Tables']['expenses']['Row'];
 type ExpenseInsert = Database['public']['Tables']['expenses']['Insert'];
 type ExpenseUpdate = Database['public']['Tables']['expenses']['Update'];
-type ProfileRow = Database['public']['Tables']['profiles']['Row'];
 
-export async function getDemoProfile(): Promise<Profile | null> {
-  const { data, error } = await supabase
-    .from('profiles')
-    .select('*')
-    .eq('id', DEMO_PROFILE_ID)
-    .maybeSingle();
-
-  if (error) throw error;
-  return data ? rowToProfile(data) : null;
+export async function getCurrentProfile(): Promise<Profile | null> {
+  const userId = await getCurrentUserId();
+  return userId ? getProfile(userId) : null;
 }
 
 export async function createExpense(expense: NewExpense): Promise<Expense> {
@@ -40,7 +35,8 @@ export async function createExpense(expense: NewExpense): Promise<Expense> {
 export async function createExpenses(expenses: NewExpense[]): Promise<Expense[]> {
   if (expenses.length === 0) return [];
 
-  const rows = expenses.map(newExpenseToInsert);
+  const userId = await requireCurrentUserId();
+  const rows = expenses.map((expense) => newExpenseToInsert(expense, userId));
   const { data, error } = await supabase
     .from('expenses')
     .insert(rows)
@@ -52,9 +48,13 @@ export async function createExpenses(expenses: NewExpense[]): Promise<Expense[]>
 }
 
 export async function getRecentExpenses(limit = 3): Promise<Expense[]> {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
   const { data, error } = await supabase
     .from('expenses')
     .select('*')
+    .eq('profile_id', userId)
     .order('spent_at', { ascending: false })
     .limit(limit);
 
@@ -68,9 +68,13 @@ export async function getMonthlyExpenses(date = new Date()): Promise<Expense[]> 
 }
 
 export async function getExpensesByDateRange(start: Date, end: Date): Promise<Expense[]> {
+  const userId = await getCurrentUserId();
+  if (!userId) return [];
+
   const { data, error } = await supabase
     .from('expenses')
     .select('*')
+    .eq('profile_id', userId)
     .gte('spent_at', start.toISOString())
     .lte('spent_at', end.toISOString())
     .order('spent_at', { ascending: false });
@@ -80,10 +84,14 @@ export async function getExpensesByDateRange(start: Date, end: Date): Promise<Ex
 }
 
 export async function getExpenseById(id: string): Promise<Expense | null> {
+  const userId = await getCurrentUserId();
+  if (!userId) return null;
+
   const { data, error } = await supabase
     .from('expenses')
     .select('*')
     .eq('id', id)
+    .eq('profile_id', userId)
     .maybeSingle();
 
   if (error) throw error;
@@ -91,11 +99,13 @@ export async function getExpenseById(id: string): Promise<Expense | null> {
 }
 
 export async function updateExpense(id: string, patch: UpdateExpense): Promise<Expense> {
+  const userId = await requireCurrentUserId();
   const row = updateExpenseToRow(patch);
   const { data, error } = await supabase
     .from('expenses')
     .update(row)
     .eq('id', id)
+    .eq('profile_id', userId)
     .select('*')
     .single();
 
@@ -104,13 +114,22 @@ export async function updateExpense(id: string, patch: UpdateExpense): Promise<E
 }
 
 export async function deleteExpense(id: string): Promise<void> {
-  const { error } = await supabase.from('expenses').delete().eq('id', id);
+  const userId = await requireCurrentUserId();
+  const { error } = await supabase
+    .from('expenses')
+    .delete()
+    .eq('id', id)
+    .eq('profile_id', userId);
+
   if (error) throw error;
 }
 
 export async function getExpenseStats(date = new Date()): Promise<ExpenseStats> {
+  const userId = await getCurrentUserId();
+  if (!userId) return emptyExpenseStats(date);
+
   const [profile, monthlyExpenses, recentExpenses] = await Promise.all([
-    getDemoProfile(),
+    getProfile(userId),
     getMonthlyExpenses(date),
     getRecentExpenses(3),
   ]);
@@ -152,22 +171,9 @@ export function rowToExpense(row: ExpenseRow): Expense {
   };
 }
 
-function rowToProfile(row: ProfileRow): Profile {
+function newExpenseToInsert(expense: NewExpense, userId: string): ExpenseInsert {
   return {
-    id: row.id,
-    displayName: row.display_name,
-    currency: row.currency ?? DEFAULT_CURRENCY,
-    monthlyBudget: row.monthly_budget == null
-      ? DEFAULT_MONTHLY_BUDGET
-      : toNumber(row.monthly_budget),
-    createdAt: row.created_at,
-    updatedAt: row.updated_at,
-  };
-}
-
-function newExpenseToInsert(expense: NewExpense): ExpenseInsert {
-  return {
-    profile_id: expense.profileId ?? DEMO_PROFILE_ID,
+    profile_id: userId,
     amount: expense.amount,
     currency: expense.currency ?? DEFAULT_CURRENCY,
     merchant: expense.merchant.trim() || 'Unknown',
@@ -177,6 +183,33 @@ function newExpenseToInsert(expense: NewExpense): ExpenseInsert {
     source: expense.source ?? 'manual',
     confidence: expense.confidence ?? null,
     raw_input: expense.rawInput?.trim() || null,
+  };
+}
+
+async function getCurrentUserId(): Promise<string | null> {
+  const session = await getCurrentSession();
+  return session?.user.id ?? null;
+}
+
+async function requireCurrentUserId(): Promise<string> {
+  const userId = await getCurrentUserId();
+  if (!userId) {
+    throw new Error('Please log in before saving expenses.');
+  }
+
+  return userId;
+}
+
+function emptyExpenseStats(date: Date): ExpenseStats {
+  return {
+    profile: null,
+    monthlyBudget: DEFAULT_MONTHLY_BUDGET,
+    monthlySpent: 0,
+    remainingBudget: DEFAULT_MONTHLY_BUDGET,
+    budgetPercentUsed: 0,
+    categoryTotals: [],
+    weeklyTotals: buildWeeklyTotals([], date),
+    recentExpenses: [],
   };
 }
 

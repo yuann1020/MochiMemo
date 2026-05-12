@@ -1,15 +1,28 @@
 import { BlurView } from 'expo-blur';
-import { Tabs } from 'expo-router';
-import { StyleSheet, View } from 'react-native';
+import { Redirect, Tabs } from 'expo-router';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
 
 import { HapticTab } from '@/components/haptic-tab';
+import { ThemedText } from '@/components/themed-text';
 import { IconSymbol } from '@/components/ui/icon-symbol';
+import { ScreenBackground } from '@/components/ui/screen-background';
 import { Colors, Radii } from '@/constants/theme';
+import { useAuth } from '@/hooks/use-auth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 
 export default function TabLayout() {
   const colorScheme = useColorScheme() ?? 'dark';
   const colors      = Colors[colorScheme];
+  const { initialized, loading, session } = useAuth();
+
+  if (!initialized || loading) {
+    return <AuthLoadingScreen />;
+  }
+
+  if (!session) {
+    return <Redirect href="/login" />;
+  }
 
   return (
     <Tabs
@@ -80,7 +93,30 @@ export default function TabLayout() {
   );
 }
 
+function AuthLoadingScreen() {
+  const colors = Colors[useColorScheme() ?? 'dark'];
+
+  return (
+    <View style={[styles.loadingRoot, { backgroundColor: colors.background }]}>
+      <ScreenBackground variant="quiet" />
+      <SafeAreaView style={styles.loadingSafe}>
+        <ActivityIndicator size="small" color={colors.primaryGlow} />
+        <ThemedText type="caption" style={{ color: colors.textSecondary }}>
+          Securing your session...
+        </ThemedText>
+      </SafeAreaView>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  loadingRoot: { flex: 1 },
+  loadingSafe: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 10,
+  },
   tabBar: {
     position:        'absolute',
     bottom:          14,

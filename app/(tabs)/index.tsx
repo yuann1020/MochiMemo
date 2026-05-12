@@ -16,6 +16,7 @@ import {
 } from '@/components/ui/premium';
 import { Colors, Radii, Spacing } from '@/constants/theme';
 import { useExpenseStats } from '@/hooks/use-expenses';
+import { useAuth } from '@/hooks/use-auth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import type { Expense } from '@/types/expense';
 import { formatCurrency } from '@/utils/currency';
@@ -26,10 +27,15 @@ export default function HomeScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'dark';
   const colors = Colors[colorScheme];
+  const { profile, user } = useAuth();
   const statsQuery = useExpenseStats();
   const stats = statsQuery.data;
   const greeting = getGreeting().split(' ').slice(0, 2).join(' ');
-  const displayName = stats?.profile?.displayName ?? 'Louis';
+  const displayName =
+    stats?.profile?.displayName ??
+    profile?.displayName ??
+    user?.email?.split('@')[0] ??
+    'there';
   const monthlyBudget = stats?.monthlyBudget ?? 2000;
   const monthlySpent = stats?.monthlySpent ?? 0;
   const remainingBudget = stats?.remainingBudget ?? monthlyBudget;

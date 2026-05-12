@@ -1,4 +1,5 @@
 import { DEFAULT_CURRENCY } from '@/constants/config';
+import { getEdgeFunctionAuthHeaders } from '@/services/supabase/auth';
 import { supabase } from '@/services/supabase/client';
 import type {
   AIExtractionResponse,
@@ -31,6 +32,7 @@ export async function extractExpenses(
     const { data, error } = await supabase.functions.invoke<AIExtractionResponse>(
       EXTRACTION_FUNCTION,
       {
+        headers: await getEdgeFunctionAuthHeaders(),
         body: {
           text: normalizedText,
           currency: normalizeCurrency(currency),

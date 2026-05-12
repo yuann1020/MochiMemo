@@ -18,6 +18,7 @@ import { ScreenBackground } from '@/components/ui/screen-background';
 import { CategoryPill, PrimaryButton, ProgressBar, SecondaryButton } from '@/components/ui/premium';
 import { Colors, Spacing } from '@/constants/theme';
 import { useCreateExpenses } from '@/hooks/use-expenses';
+import { useAuth } from '@/hooks/use-auth';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import { useRecordingStore } from '@/stores/recording-store';
 import type { ExpenseReviewDraft } from '@/services/audio/recorder';
@@ -41,6 +42,7 @@ export default function ReviewExpenseScreen() {
   const markSaved = useRecordingStore((state) => state.markReviewSaved);
   const resetRecordingFlow = useRecordingStore((state) => state.reset);
   const createExpensesMutation = useCreateExpenses();
+  const { user } = useAuth();
   const [saveError, setSaveError] = useState<string | null>(null);
 
   if (!draft) {
@@ -85,7 +87,13 @@ export default function ReviewExpenseScreen() {
       return;
     }
 
+    if (!user) {
+      setSaveError('Please log in before saving expenses.');
+      return;
+    }
+
     const mainExpense: NewExpense = {
+      profileId: user.id,
       amount: draft.amount,
       currency: draft.currency,
       merchant: draft.merchant,
@@ -97,6 +105,7 @@ export default function ReviewExpenseScreen() {
       rawInput: draft.inputText,
     };
     const additionalExpenseRows: NewExpense[] = validAdditionalExpenses.map((expense) => ({
+      profileId: user.id,
       amount: expense.amount,
       currency: expense.currency,
       merchant: expense.merchant,

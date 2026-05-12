@@ -13,7 +13,7 @@ export interface Database {
           updated_at: string | null;
         };
         Insert: {
-          id?: string;
+          id: string;
           display_name?: string | null;
           currency?: string | null;
           monthly_budget?: number | string | null;
@@ -33,7 +33,7 @@ export interface Database {
       expenses: {
         Row: {
           id: string;
-          profile_id: string | null;
+          profile_id: string;
           amount: number | string;
           currency: string;
           merchant: string;
@@ -48,7 +48,7 @@ export interface Database {
         };
         Insert: {
           id?: string;
-          profile_id?: string | null;
+          profile_id: string;
           amount: number;
           currency?: string;
           merchant: string;
@@ -63,7 +63,7 @@ export interface Database {
         };
         Update: {
           id?: string;
-          profile_id?: string | null;
+          profile_id?: string;
           amount?: number;
           currency?: string;
           merchant?: string;
