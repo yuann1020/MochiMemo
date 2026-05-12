@@ -8,18 +8,23 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { CategoryPill, ProgressBar, SecondaryButton } from '@/components/ui/premium';
 import { ScreenBackground } from '@/components/ui/screen-background';
 import { Colors, Spacing } from '@/constants/theme';
+import { useExpenseStats } from '@/hooks/use-expenses';
 import { useColorScheme } from '@/hooks/use-color-scheme';
-
-const CATEGORIES = [
-  { name: 'Food & Drinks', spent: 'RM 842.50', pct: 92, color: '#F472B6' },
-  { name: 'Shopping', spent: 'RM 610.30', pct: 82, color: '#F9A8D4' },
-  { name: 'Transport', spent: 'RM 308.20', pct: 58, color: '#A78BFA' },
-  { name: 'Others', spent: 'RM 168.30', pct: 40, color: '#60A5FA' },
-];
+import { formatCurrency } from '@/utils/currency';
 
 export default function BudgetAlertScreen() {
   const router = useRouter();
   const colors = Colors[useColorScheme() ?? 'dark'];
+  const statsQuery = useExpenseStats();
+  const stats = statsQuery.data;
+  const monthlyBudget = stats?.monthlyBudget ?? 2000;
+  const monthlySpent = stats?.monthlySpent ?? 0;
+  const remainingBudget = stats?.remainingBudget ?? monthlyBudget;
+  const budgetPercentUsed = stats?.budgetPercentUsed ?? 0;
+  const categoryData = stats?.categoryTotals ?? [];
+  const alertCopy = budgetPercentUsed >= 85
+    ? 'You are close to your monthly limit.'
+    : 'Your budget is currently on track.';
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -35,25 +40,38 @@ export default function BudgetAlertScreen() {
               Budget Alert
             </ThemedText>
             <ThemedText type="caption" style={{ color: colors.textSecondary }}>
-              You are close to your monthly limit.
+              {alertCopy}
             </ThemedText>
           </View>
 
           <GlassCard variant="warn">
             <View style={styles.alertSummary}>
-              <ThemedText style={styles.alertValue}>85%</ThemedText>
+              <ThemedText style={styles.alertValue}>{budgetPercentUsed}%</ThemedText>
               <ThemedText type="bodyBold">budget used</ThemedText>
             </View>
             <View style={styles.valuesRow}>
-              <SummaryValue label="Budget Limit" value="RM 2,000.00" />
-              <SummaryValue label="Spent" value="RM 1,702.30" />
-              <SummaryValue label="Remaining" value="RM 297.70" accent />
+              <SummaryValue label="Budget Limit" value={formatCurrency(monthlyBudget)} />
+              <SummaryValue label="Spent" value={formatCurrency(monthlySpent)} />
+              <SummaryValue label="Remaining" value={formatCurrency(remainingBudget)} accent />
             </View>
-            <ProgressBar value={85} color={colors.accent} height={9} />
+            <ProgressBar value={budgetPercentUsed} color={colors.accent} height={9} />
             <ThemedText type="caption" style={styles.limitText}>
-              You are just RM 297.70 away from your limit.
+              {remainingBudget >= 0
+                ? `You have ${formatCurrency(remainingBudget)} left this month.`
+                : `You are ${formatCurrency(Math.abs(remainingBudget))} over budget.`}
             </ThemedText>
           </GlassCard>
+
+          {statsQuery.isError && (
+            <GlassCard variant="warn" padded={false}>
+              <View style={styles.stateNotice}>
+                <IconSymbol size={16} name="exclamationmark.triangle.fill" color={colors.accentHi} />
+                <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
+                  Could not load Supabase budget data.
+                </ThemedText>
+              </View>
+            </GlassCard>
+          )}
 
           <GlassCard padded={false}>
             <View style={styles.cardHeader}>
@@ -63,17 +81,21 @@ export default function BudgetAlertScreen() {
               </ThemedText>
             </View>
             <View style={styles.categoryList}>
-              {CATEGORIES.map((item) => (
-                <View key={item.name} style={styles.categoryRow}>
-                  <CategoryPill label={item.name} compact color={item.color} />
+              {categoryData.length > 0 ? categoryData.map((item) => (
+                <View key={item.category} style={styles.categoryRow}>
+                  <CategoryPill label={item.category} compact color={item.color} />
                   <View style={styles.categoryProgress}>
-                    <ProgressBar value={item.pct} color={item.color} />
+                    <ProgressBar value={item.percent} color={item.color} />
                     <ThemedText type="caption" style={{ color: colors.textMuted }}>
-                      {item.pct}% - {item.spent}
+                      {item.percent}% - {formatCurrency(item.total)}
                     </ThemedText>
                   </View>
                 </View>
-              ))}
+              )) : (
+                <ThemedText type="caption" style={{ color: colors.textMuted }}>
+                  No category spending yet.
+                </ThemedText>
+              )}
             </View>
           </GlassCard>
 
@@ -188,5 +210,13 @@ const styles = StyleSheet.create({
   suggestButton: {
     flex: 1,
     paddingHorizontal: Spacing.sm,
+  },
+  stateNotice: {
+    minHeight: 48,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.sm,
   },
 });

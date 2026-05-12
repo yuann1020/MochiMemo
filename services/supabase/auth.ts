@@ -27,9 +27,9 @@ export async function getProfile(userId: string): Promise<UserProfile | null> {
   if (error) return null;
   return {
     id: data.id,
-    email: data.email ?? '',
+    email: '',
     displayName: data.display_name,
     currency: data.currency ?? 'MYR',
-    createdAt: data.created_at,
+    createdAt: data.created_at ?? '',
   };
 }

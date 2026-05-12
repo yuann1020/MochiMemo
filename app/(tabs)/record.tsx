@@ -422,7 +422,7 @@ function TypeState({
           <View style={styles.tipCopy}>
             <ThemedText type="bodyBold">Tip</ThemedText>
             <ThemedText type="caption" style={{ color: colors.textMuted }}>
-              Include amount and merchant for better mock extraction.
+              Include amount and merchant for better extraction.
             </ThemedText>
           </View>
         </View>
