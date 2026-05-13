@@ -10,7 +10,6 @@ import {
   CategoryPill,
   DonutChartPlaceholder,
   ExpenseRow,
-  IconCircleButton,
   MetricCard,
   SectionHeader,
 } from '@/components/ui/premium';
@@ -54,22 +53,15 @@ export default function HomeScreen() {
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
-            <View style={styles.headerCopy}>
-              <ThemedText type="caption" style={styles.greeting}>
-                {greeting}, {displayName}
-              </ThemedText>
-              <ThemedText type="title" style={styles.heroTitle}>
-                Track smartly,{'\n'}live freely.
-              </ThemedText>
-              <ThemedText type="caption" style={{ color: colors.textSecondary }}>
-                Every smart choice shapes your future.
-              </ThemedText>
-            </View>
-            <View style={styles.headerIcons}>
-              <IconCircleButton icon="magnifyingglass" />
-              <IconCircleButton icon="bell.fill" dot />
-              <IconCircleButton icon="person.fill" />
-            </View>
+            <ThemedText type="caption" style={styles.greeting}>
+              {greeting}, {displayName}
+            </ThemedText>
+            <ThemedText type="title" style={styles.heroTitle}>
+              Track smartly,{'\n'}live freely.
+            </ThemedText>
+            <ThemedText type="caption" style={{ color: colors.textSecondary }}>
+              Every smart choice shapes your future.
+            </ThemedText>
           </View>
 
           <GlassCard padded={false} style={styles.overviewCard}>
@@ -105,7 +97,7 @@ export default function HomeScreen() {
                 />
               </View>
 
-              <DonutChartPlaceholder value={`${budgetPercentUsed}%`} size={112} centerLabel="of budget" />
+              <DonutChartPlaceholder value={`${budgetPercentUsed}%`} size={112} centerLabel="of budget" segments={categoryData} />
 
               <View style={styles.legend}>
                 {categoryData.length > 0 ? categoryData.map((item) => (
@@ -132,7 +124,7 @@ export default function HomeScreen() {
               <View style={styles.stateNotice}>
                 <IconSymbol size={16} name="exclamationmark.triangle.fill" color={colors.accentHi} />
                 <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
-                  Could not load Supabase expenses. Showing safe empty totals.
+                  Could not load your expenses. Showing offline totals.
                 </ThemedText>
               </View>
             </GlassCard>
@@ -241,16 +233,9 @@ const styles = StyleSheet.create({
     gap: Spacing.lg,
   },
   header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: Spacing.md,
-    minHeight: 128,
-  },
-  headerCopy: {
-    flex: 1,
     gap: Spacing.xs,
     paddingTop: Spacing.sm,
+    paddingBottom: Spacing.sm,
   },
   greeting: {
     color: 'rgba(248,247,255,0.92)',
@@ -260,10 +245,6 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 30,
     lineHeight: 34,
-  },
-  headerIcons: {
-    flexDirection: 'row',
-    gap: Spacing.sm,
   },
   overviewCard: {
     marginTop: -Spacing.sm,

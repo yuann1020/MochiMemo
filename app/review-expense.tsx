@@ -15,7 +15,7 @@ import { ThemedText } from '@/components/themed-text';
 import { GlassCard } from '@/components/ui/glass-card';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { ScreenBackground } from '@/components/ui/screen-background';
-import { CategoryPill, PrimaryButton, ProgressBar, SecondaryButton } from '@/components/ui/premium';
+import { CategoryPill, PrimaryButton, SecondaryButton } from '@/components/ui/premium';
 import { Colors, Spacing } from '@/constants/theme';
 import { useCreateExpenses } from '@/hooks/use-expenses';
 import { useAuth } from '@/hooks/use-auth';
@@ -126,17 +126,6 @@ export default function ReviewExpenseScreen() {
   }
 
   const isSaving = createExpensesMutation.isPending;
-  const confidenceMessage = !hasValidMainExpense
-    ? 'No valid expense was found in this input.'
-    : extractionErrorMessage
-    ? 'Using local mock fallback because AI extraction failed.'
-    : draft.transcriptionError || transcriptionErrorMessage
-      ? 'Transcription used a clearly labeled demo fallback.'
-    : pendingExpenses.length === 0 && clarificationQuestion
-      ? 'AI needs one more detail before confident parsing.'
-    : pendingExpenses.length > 1
-      ? `Secure AI extraction found ${pendingExpenses.length} expenses.`
-      : 'Parsed through the secure Supabase Edge Function.';
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -291,26 +280,6 @@ export default function ReviewExpenseScreen() {
                       </ThemedText>
                     </View>
                   ))}
-                </View>
-              </GlassCard>
-            )}
-
-            {hasValidMainExpense && (
-              <GlassCard variant="purple" padded={false}>
-                <View style={styles.confidenceCard}>
-                  <View>
-                    <ThemedText style={styles.confidenceValue}>{draft.confidence}%</ThemedText>
-                    <ThemedText type="bodyBold">AI Confidence</ThemedText>
-                  </View>
-                  <View style={styles.confidenceCopy}>
-                    <ThemedText type="caption" style={{ color: colors.textSecondary }}>
-                      {confidenceMessage}
-                    </ThemedText>
-                    <ProgressBar value={draft.confidence} color={colors.primaryGlow} />
-                  </View>
-                  <View style={styles.shieldBadge}>
-                    <IconSymbol size={20} name="shield.fill" color={colors.blue} />
-                  </View>
                 </View>
               </GlassCard>
             )}
@@ -575,33 +544,6 @@ const styles = StyleSheet.create({
     flex: 0,
     minWidth: 74,
     fontSize: 18,
-  },
-  confidenceCard: {
-    minHeight: 86,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: Spacing.md,
-    padding: Spacing.lg,
-  },
-  confidenceValue: {
-    fontSize: 30,
-    lineHeight: 34,
-    fontWeight: '800',
-    color: '#F9A8D4',
-  },
-  confidenceCopy: {
-    flex: 1,
-    gap: Spacing.sm,
-  },
-  shieldBadge: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(96,165,250,0.14)',
-    borderWidth: 1,
-    borderColor: 'rgba(96,165,250,0.35)',
   },
   savedNotice: {
     minHeight: 54,

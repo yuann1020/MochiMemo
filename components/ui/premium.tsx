@@ -256,19 +256,29 @@ export function SearchBar({
 
 export function FilterChip({
   label,
-  icon = 'chevron.right',
+  passive = false,
 }: {
   label: string;
-  icon?: IconName;
+  passive?: boolean;
 }) {
   const colors = Colors[useColorScheme() ?? 'dark'];
+
+  if (passive) {
+    return (
+      <View style={[styles.filterChip, styles.filterChipPassive]}>
+        <ThemedText type="caption" style={{ color: colors.textSecondary, fontWeight: '700' }}>
+          {label}
+        </ThemedText>
+      </View>
+    );
+  }
 
   return (
     <TouchableOpacity activeOpacity={0.75} style={styles.filterChip}>
       <ThemedText type="caption" style={{ color: colors.textSecondary, fontWeight: '700' }}>
         {label}
       </ThemedText>
-      <IconSymbol size={13} name={icon} color={colors.textMuted} />
+      <IconSymbol size={13} name="chevron.right" color={colors.textMuted} />
     </TouchableOpacity>
   );
 }
@@ -314,16 +324,16 @@ export function MetricCard({
   return (
     <GlassCard padded={false} style={styles.metricCard}>
       <View style={styles.metricInner}>
-        <ThemedText type="label" style={styles.metricLabel}>
+        <ThemedText type="label" style={styles.metricLabel} numberOfLines={1}>
           {label}
         </ThemedText>
         <View style={styles.metricValueRow}>
-          {icon && <IconSymbol size={18} name={icon} color={color} />}
-          <ThemedText style={[styles.metricValue, { color }]}>
+          {icon && <IconSymbol size={16} name={icon} color={color} />}
+          <ThemedText style={[styles.metricValue, { color }]} numberOfLines={1}>
             {value}
           </ThemedText>
           {unit && (
-            <ThemedText type="caption" style={{ color }}>
+            <ThemedText type="caption" style={{ color }} numberOfLines={1}>
               {unit}
             </ThemedText>
           )}
@@ -381,17 +391,22 @@ export function ExpenseRow({
 
 export function DonutChartPlaceholder({
   value,
-  total,
   size = 116,
   centerLabel = 'used',
+  segments,
 }: {
   value: string;
-  total?: string;
   size?: number;
   centerLabel?: string;
+  segments?: { color: string; percent: number }[];
 }) {
   const colors = Colors[useColorScheme() ?? 'dark'];
   const ring = Math.round(size / 12);
+  const innerSize = size - ring * 2;
+
+  const [c0, c1, c2, c3] = (!segments || segments.length === 0)
+    ? [colors.accent, colors.primaryGlow, colors.blue, colors.primary]
+    : buildDonutQuadrantColors(segments, colors.accent);
 
   return (
     <View style={[styles.donutWrap, { width: size, height: size }]}>
@@ -414,26 +429,46 @@ export function DonutChartPlaceholder({
             height: size,
             borderRadius: size / 2,
             borderWidth: ring,
-            borderTopColor: colors.accent,
-            borderRightColor: colors.primaryGlow,
-            borderBottomColor: colors.blue,
-            shadowColor: colors.accent,
+            borderTopColor: c0,
+            borderRightColor: c1,
+            borderBottomColor: c2,
+            borderLeftColor: c3,
+            shadowColor: segments?.[0]?.color ?? colors.accent,
           },
         ]}
       />
-      <View style={styles.donutCenter}>
-        <ThemedText style={styles.donutValue}>{value}</ThemedText>
+      <View style={[styles.donutCenter, { width: innerSize, height: innerSize }]}>
+        <ThemedText
+          style={styles.donutValue}
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          minimumFontScale={0.5}
+        >
+          {value}
+        </ThemedText>
         <ThemedText type="caption" style={{ color: colors.textMuted, textAlign: 'center' }}>
           {centerLabel}
         </ThemedText>
-        {total && (
-          <ThemedText type="label" style={{ color: colors.textMuted, marginTop: 2 }}>
-            {total}
-          </ThemedText>
-        )}
       </View>
     </View>
   );
+}
+
+function buildDonutQuadrantColors(
+  segments: { color: string; percent: number }[],
+  fallback: string,
+): [string, string, string, string] {
+  const q: [string, string, string, string] = [fallback, fallback, fallback, fallback];
+  let filled = 0;
+  for (const seg of segments) {
+    if (seg.percent <= 0 || filled >= 4) break;
+    const end = Math.min(4, filled + (seg.percent / 100) * 4);
+    const qStart = Math.floor(filled);
+    const qEnd = Math.min(3, Math.ceil(end) - 1);
+    for (let i = qStart; i <= qEnd; i++) q[i] = seg.color;
+    filled = end;
+  }
+  return q;
 }
 
 export function GradientOrb({
@@ -634,25 +669,27 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   metricInner: {
-    minHeight: 96,
-    padding: Spacing.lg,
+    height: 96,
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
     justifyContent: 'center',
     alignItems: 'center',
-    gap: Spacing.sm,
+    gap: 6,
   },
   metricLabel: {
     color: 'rgba(248,247,255,0.66)',
     textAlign: 'center',
+    fontSize: 10,
   },
   metricValueRow: {
     flexDirection: 'row',
-    alignItems: 'baseline',
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 5,
+    gap: 4,
   },
   metricValue: {
-    fontSize: 28,
-    lineHeight: 34,
+    fontSize: 24,
+    lineHeight: 28,
     fontWeight: '800',
   },
   expenseRow: {
@@ -704,23 +741,26 @@ const styles = StyleSheet.create({
   },
   donutFill: {
     position: 'absolute',
-    borderLeftColor: 'rgba(96,165,250,0.28)',
-    transform: [{ rotate: '35deg' }],
     shadowOffset: { width: 0, height: 0 },
     shadowOpacity: 0.65,
     shadowRadius: 12,
     elevation: 0,
   },
   donutCenter: {
+    position: 'absolute',
     alignItems: 'center',
     justifyContent: 'center',
     padding: Spacing.sm,
   },
+  filterChipPassive: {
+    opacity: 0.78,
+  },
   donutValue: {
-    fontSize: 24,
-    lineHeight: 28,
+    fontSize: 15,
+    lineHeight: 19,
     fontWeight: '800',
     color: '#F8F7FF',
+    textAlign: 'center',
   },
   gradientOrbOuter: {
     alignItems: 'center',

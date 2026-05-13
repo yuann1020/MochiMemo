@@ -76,12 +76,24 @@ export async function readAudioAsBase64(audioUri: string): Promise<string> {
   return audioFile.base64();
 }
 
+const HALLUCINATION_PATTERNS = [
+  /^the speaker/i,
+  /^this audio/i,
+  /^background noise/i,
+  /personal expenses in malaysia/i,
+  /logging personal expenses/i,
+];
+
 export function normalizeTranscriptionResponse(value: unknown): TranscriptionResult {
   const record = isRecord(value) ? value : {};
   const transcript = typeof record.transcript === 'string' ? record.transcript.trim() : '';
 
   if (!transcript) {
     throw new Error('No speech detected.');
+  }
+
+  if (HALLUCINATION_PATTERNS.some((p) => p.test(transcript))) {
+    throw new Error('No speech detected. Please try again.');
   }
 
   return {

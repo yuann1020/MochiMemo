@@ -34,6 +34,7 @@ export default function InsightsScreen() {
   const monthlyExpenseCount = stats?.categoryTotals.reduce((sum, c) => sum + c.count, 0) ?? 0;
   const insightsQuery = useAIInsights(monthlyExpenseCount);
   const refreshInsights = useRefreshInsights();
+  const chartData = weeklyData.length ? weeklyData : emptyWeeklyData();
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
@@ -54,7 +55,7 @@ export default function InsightsScreen() {
                 Your spending patterns this month.
               </ThemedText>
             </View>
-            <FilterChip label="This Month" />
+            <FilterChip label="This Month" passive />
           </View>
 
           <GlassCard variant="purple" padded={false}>
@@ -66,23 +67,22 @@ export default function InsightsScreen() {
                     : 'No spending data\nyet this month.'}
                 </ThemedText>
                 <ThemedText type="caption" style={{ color: colors.textSecondary }}>
-                  {hasData ? 'Category totals are live from Supabase.' : 'Saved expenses will appear here.'}
+                  {hasData ? 'Your spending data is up to date.' : 'Saved expenses will appear here.'}
                 </ThemedText>
               </View>
               <View style={styles.heroChart}>
-                {(weeklyData.length ? weeklyData : emptyWeeklyData()).map((week, index) => (
+                {chartData.map((week, index) => (
                   <View
                     key={index}
                     style={[
                       styles.heroBar,
                       {
-                        height: Math.max(8, week.percent),
-                        backgroundColor: index === 4 ? colors.accent : colors.primary,
+                        height: Math.max(6, Math.round(week.percent * 0.74)),
+                        backgroundColor: index === chartData.length - 1 ? colors.accent : colors.primary,
                       },
                     ]}
                   />
                 ))}
-                <IconSymbol size={18} name="arrow.right" color={colors.primaryGlow} />
               </View>
             </View>
           </GlassCard>
@@ -107,11 +107,11 @@ export default function InsightsScreen() {
                 ))}
               </View>
               <View style={styles.barGroups}>
-                {(weeklyData.length ? weeklyData : emptyWeeklyData()).map((week) => (
+                {chartData.map((week) => (
                   <View key={week.label} style={styles.barGroup}>
                     <View style={styles.dualBars}>
-                      <View style={[styles.chartBar, { height: `${Math.max(3, week.percent)}%` as any, backgroundColor: colors.primaryGlow }]} />
-                      <View style={[styles.chartBar, { height: `${Math.max(3, Math.round(week.percent * 0.72))}%` as any, backgroundColor: colors.accentHi }]} />
+                      <View style={[styles.chartBar, { height: `${Math.max(4, week.percent)}%` as any, backgroundColor: colors.primaryGlow }]} />
+                      <View style={[styles.chartBar, { height: `${Math.max(4, Math.round(week.percent * 0.72))}%` as any, backgroundColor: colors.accentHi }]} />
                     </View>
                     <ThemedText type="label" style={styles.weekLabel}>
                       {week.label}
@@ -127,11 +127,11 @@ export default function InsightsScreen() {
               <ThemedText type="bodyBold" style={styles.cardTitle}>
                 Category Breakdown
               </ThemedText>
-              <FilterChip label="This Month" />
+              <FilterChip label="This Month" passive />
             </View>
 
             <View style={styles.categoryBody}>
-              <DonutChartPlaceholder value={formatCurrency(monthlySpent)} centerLabel="Total" size={132} />
+              <DonutChartPlaceholder value={formatCurrency(monthlySpent)} centerLabel="Total" size={132} segments={categoryData} />
               <View style={styles.categoryLegend}>
                 {categoryData.length > 0 ? categoryData.map((item) => (
                   <View key={item.category} style={styles.categoryRow}>
@@ -157,7 +157,7 @@ export default function InsightsScreen() {
               <View style={styles.stateNotice}>
                 <IconSymbol size={16} name="exclamationmark.triangle.fill" color={colors.accentHi} />
                 <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
-                  Could not load Supabase insights.
+                  Could not load your insights.
                 </ThemedText>
               </View>
             </GlassCard>
@@ -166,18 +166,20 @@ export default function InsightsScreen() {
           <SectionHeader title="Budget Health" />
           <GlassCard>
             <View style={styles.healthTop}>
-              <View>
+              <View style={styles.healthTopCopy}>
                 <ThemedText type="bodyBold">Monthly budget used</ThemedText>
                 <ThemedText type="caption" style={{ color: colors.textMuted }}>
                   {formatCurrency(remainingBudget)} remaining
                 </ThemedText>
               </View>
-              <ThemedText style={styles.healthGrade}>{budgetGrade(budgetPercentUsed)}</ThemedText>
+              <View style={styles.healthGradeBadge}>
+                <ThemedText style={styles.healthGradeText}>{budgetGrade(budgetPercentUsed)}</ThemedText>
+              </View>
             </View>
             <ProgressBar value={budgetPercentUsed} color={colors.accent} height={8} />
             <View style={styles.healthLabels}>
               <ThemedText type="label" style={{ color: colors.textMuted }}>
-                RM 0
+                {formatCurrency(0)}
               </ThemedText>
               <ThemedText type="label" style={{ color: colors.textMuted }}>
                 {budgetPercentUsed}% used
@@ -284,18 +286,17 @@ function AIInsightsPanel({
         </View>
       </GlassCard>
 
-      {/* Insight cards grid */}
+      {/* Insight cards */}
       {insights.cards.length > 0 && (
         <View style={styles.aiCardGrid}>
           {insights.cards.map((card, i) => (
-            <GlassCard key={i} padded={false} style={styles.aiCardItem}>
+            <GlassCard key={i} padded={false}>
               <View style={styles.aiCardInner}>
                 <ThemedText type="label" style={{ color: colors.textMuted }}>
                   {card.title}
                 </ThemedText>
                 <ThemedText
                   style={[styles.aiCardValue, { color: severityColor(card.severity, colors) }]}
-                  numberOfLines={1}
                 >
                   {card.value}
                 </ThemedText>
@@ -474,11 +475,12 @@ const styles = StyleSheet.create({
   },
   heroChart: {
     width: 100,
-    height: 82,
+    height: 74,
     flexDirection: 'row',
     alignItems: 'flex-end',
     justifyContent: 'center',
     gap: 5,
+    overflow: 'hidden',
   },
   heroBar: {
     width: 10,
@@ -521,6 +523,7 @@ const styles = StyleSheet.create({
   },
   barChart: {
     height: 174,
+    overflow: 'hidden',
     flexDirection: 'row',
     paddingHorizontal: Spacing.lg,
     paddingBottom: Spacing.lg,
@@ -597,19 +600,26 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     marginBottom: Spacing.md,
   },
-  healthGrade: {
+  healthTopCopy: {
+    flex: 1,
+    gap: 2,
+  },
+  healthGradeBadge: {
     width: 44,
     height: 44,
     borderRadius: 22,
-    overflow: 'hidden',
-    textAlign: 'center',
-    textAlignVertical: 'center',
-    color: '#4ADE80',
+    alignItems: 'center',
+    justifyContent: 'center',
     backgroundColor: '#4ADE8018',
     borderWidth: 1,
     borderColor: '#4ADE8055',
+    flexShrink: 0,
+  },
+  healthGradeText: {
+    color: '#4ADE80',
     fontSize: 22,
     fontWeight: '900',
+    lineHeight: 26,
   },
   healthLabels: {
     flexDirection: 'row',
@@ -667,18 +677,11 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   aiCardGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
     gap: Spacing.sm,
   },
-  aiCardItem: {
-    width: '47.5%',
-  },
   aiCardInner: {
-    padding: Spacing.md,
-    gap: 4,
-    minHeight: 90,
-    justifyContent: 'center',
+    padding: Spacing.lg,
+    gap: Spacing.sm,
   },
   aiCardValue: {
     fontSize: 20,

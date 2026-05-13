@@ -104,9 +104,18 @@ export default function BudgetAlertScreen() {
               <ThemedText type="bodyBold">Suggested Actions</ThemedText>
             </View>
             <View style={styles.actions}>
-              <SecondaryButton label="Set cap" icon="slider.horizontal.3" style={styles.suggestButton} />
-              <SecondaryButton label="Reduce" icon="shield.fill" style={styles.suggestButton} />
-              <SecondaryButton label="Review" icon="creditcard.fill" style={styles.suggestButton} />
+              <SecondaryButton
+                label="Adjust Budget"
+                icon="slider.horizontal.3"
+                onPress={() => router.navigate('/(tabs)/profile')}
+                style={styles.suggestButton}
+              />
+              <SecondaryButton
+                label="View Insights"
+                icon="chart.bar.fill"
+                onPress={() => router.navigate('/(tabs)/dashboard')}
+                style={styles.suggestButton}
+              />
             </View>
           </GlassCard>
         </ScrollView>

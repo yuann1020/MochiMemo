@@ -48,8 +48,14 @@ export default function AddExpenseScreen() {
   const router = useRouter();
   const colorScheme = useColorScheme() ?? 'dark';
   const colors = Colors[colorScheme];
-  const [inputMode, setInputMode] = useState<InputMode>('voice');
-  const [typedText, setTypedText] = useState('');
+  // Pre-populate from draft when returning via Edit Input
+  const draftAtMount = useRecordingStore.getState();
+  const [inputMode, setInputMode] = useState<InputMode>(
+    draftAtMount.reviewDraft?.sourceMode === 'type' ? 'type' : 'voice',
+  );
+  const [typedText, setTypedText] = useState(
+    draftAtMount.reviewDraft?.sourceMode === 'type' ? draftAtMount.reviewDraft.inputText : '',
+  );
   const [isExtracting, setIsExtracting] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [voiceFlowError, setVoiceFlowError] = useState<string | null>(null);
@@ -138,7 +144,7 @@ export default function AddExpenseScreen() {
     setStoreStatus('transcribing');
 
     try {
-      const transcription = await transcribeAudio(uri);
+      const transcription = await transcribeAudio(uri, { useMockFallback: false });
       const transcript = transcription.transcript.trim();
       const draft = createVoiceReviewDraft({
         audioUri: uri,
@@ -148,15 +154,12 @@ export default function AddExpenseScreen() {
         transcriptionError: transcription.error ?? null,
       });
 
-      if (transcription.error) {
-        setTranscriptionError(transcription.error);
-      }
-
       setIsTranscribing(false);
       await extractAndOpenReview(draft);
     } catch (error) {
       const message = error instanceof Error ? error.message : 'Could not transcribe recording.';
-      setVoiceFlowError(message);
+      const isNoSpeech = /no speech/i.test(message) || /speech detected/i.test(message);
+      setVoiceFlowError(isNoSpeech ? 'No speech detected. Please try again.' : message);
       setTranscriptionError(message);
       setStoreStatus('error');
     } finally {
@@ -191,15 +194,6 @@ export default function AddExpenseScreen() {
     await extractAndOpenReview(draft);
   }
 
-  async function handleClear() {
-    if (isBusy) return;
-    if (isRecording) await stopRecording();
-    resetRecording();
-    resetReviewState();
-    setVoiceFlowError(null);
-    setTypedText('');
-  }
-
   async function handleRetryVoice() {
     if (isBusy || !audioUri) return;
     await transcribeAndOpenReview(audioUri, durationSeconds);
@@ -224,12 +218,6 @@ export default function AddExpenseScreen() {
             keyboardShouldPersistTaps="handled"
             showsVerticalScrollIndicator={false}
           >
-            <View style={styles.topBar}>
-              <TouchableOpacity activeOpacity={0.76} style={styles.backButton} onPress={handleClear}>
-                <IconSymbol size={18} name="arrow.left" color={colors.text} />
-              </TouchableOpacity>
-            </View>
-
             <View style={styles.header}>
               <ThemedText type="title" style={styles.pageTitle}>
                 Add Expense
@@ -362,9 +350,9 @@ function VoiceState({
           {isRequestingPermission
             ? 'Requesting microphone access...'
             : isTranscribing
-              ? 'Transcribing your voice securely...'
+              ? 'Converting your voice to text...'
               : isExtracting
-                ? 'Finding expenses from your transcript...'
+                ? 'Analyzing your expense...'
             : isRecording
               ? 'Tap the orb again or stop to review.'
               : 'Tap to speak'}
@@ -375,8 +363,8 @@ function VoiceState({
         <GlassCard padded={false} style={styles.uriCard}>
           <View style={styles.uriInner}>
             <IconSymbol size={15} name="checkmark" color={colors.primaryGlow} />
-            <ThemedText type="caption" numberOfLines={1} style={{ color: colors.textMuted, flex: 1 }}>
-              Local audio ready: {audioUri}
+            <ThemedText type="caption" style={{ color: colors.textMuted, flex: 1 }}>
+              {'Recording captured. Tap "Stop & Review" to continue.'}
             </ThemedText>
           </View>
         </GlassCard>
@@ -398,7 +386,7 @@ function VoiceState({
           <View style={styles.loadingInner}>
             <ActivityIndicator size="small" color={colors.primaryGlow} />
             <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
-              Extracting expenses securely...
+              Analyzing your expense...
             </ThemedText>
           </View>
         </GlassCard>
@@ -409,7 +397,7 @@ function VoiceState({
           <View style={styles.loadingInner}>
             <ActivityIndicator size="small" color={colors.primaryGlow} />
             <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
-              Transcribing voice securely...
+              Converting your voice to text...
             </ThemedText>
           </View>
         </GlassCard>
@@ -448,9 +436,9 @@ function VoiceState({
         <View style={styles.tipInner}>
           <IconSymbol size={15} name="info.circle.fill" color={colors.textSecondary} />
           <View style={styles.tipCopy}>
-            <ThemedText type="bodyBold">Recording tips</ThemedText>
+            <ThemedText type="bodyBold">Tips for best results</ThemedText>
             <ThemedText type="caption" style={{ color: colors.textMuted }}>
-              Audio is sent only to the secure Supabase transcription function.
+              Speak clearly and keep it short. Say the amount and what you bought. You can always edit before saving.
             </ThemedText>
           </View>
         </View>
@@ -520,7 +508,7 @@ function TypeState({
           <View style={styles.loadingInner}>
             <ActivityIndicator size="small" color={colors.primaryGlow} />
             <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
-              Extracting expenses securely...
+              Analyzing your expense...
             </ThemedText>
           </View>
         </GlassCard>
@@ -599,20 +587,6 @@ const styles = StyleSheet.create({
     paddingTop: Spacing.sm,
     paddingBottom: 172,
     gap: Spacing.lg,
-  },
-  topBar: {
-    height: 42,
-    justifyContent: 'center',
-  },
-  backButton: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(167,139,250,0.12)',
-    borderWidth: 1,
-    borderColor: 'rgba(167,139,250,0.18)',
   },
   header: {
     alignItems: 'center',

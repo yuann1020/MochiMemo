@@ -45,6 +45,14 @@ interface ComputedStats {
   previousMonthSpent: number;
   monthOverMonthChange: number | null;
   currency: string;
+  // Spending pace fields
+  daysInMonth: number;
+  currentDayOfMonth: number;
+  monthElapsedPercent: number;
+  daysRemaining: number;
+  averageDailySpend: number;
+  projectedMonthEndSpend: number;
+  budgetPaceStatus: 'on_track' | 'ahead_of_budget' | 'over_pace';
 }
 
 // ─── Insight output types (mirrors types/ai.ts) ───────────────────────────────
@@ -276,6 +284,20 @@ function computeStats(
       ? Math.round(((monthlySpent - previousMonthSpent) / previousMonthSpent) * 100)
       : null;
 
+  // Spending pace — compare budget consumption rate to time elapsed
+  const daysInMonth = new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const currentDayOfMonth = now.getDate();
+  const monthElapsedPercent = Math.round((currentDayOfMonth / daysInMonth) * 100);
+  const daysRemaining = daysInMonth - currentDayOfMonth;
+  const averageDailySpend = currentDayOfMonth > 0 ? round2(monthlySpent / currentDayOfMonth) : 0;
+  const projectedMonthEndSpend = round2(averageDailySpend * daysInMonth);
+  const budgetPaceStatus =
+    budgetUsedPercent > monthElapsedPercent + 10
+      ? 'over_pace'
+      : budgetUsedPercent > monthElapsedPercent + 5
+        ? 'ahead_of_budget'
+        : 'on_track';
+
   return {
     expenseCount: current.length,
     monthlyBudget,
@@ -289,6 +311,13 @@ function computeStats(
     previousMonthSpent,
     monthOverMonthChange,
     currency,
+    daysInMonth,
+    currentDayOfMonth,
+    monthElapsedPercent,
+    daysRemaining,
+    averageDailySpend,
+    projectedMonthEndSpend,
+    budgetPaceStatus,
   };
 }
 
@@ -365,6 +394,14 @@ async function generateInsightsFromOpenAI(
       highestExpense: stats.highestExpense,
       categoryTotals: stats.categoryTotals,
       weeklyTotals: stats.weeklyTotals,
+      // Spending pace
+      daysInMonth: stats.daysInMonth,
+      currentDayOfMonth: stats.currentDayOfMonth,
+      monthElapsedPercent: stats.monthElapsedPercent,
+      daysRemaining: stats.daysRemaining,
+      averageDailySpend: stats.averageDailySpend,
+      projectedMonthEndSpend: stats.projectedMonthEndSpend,
+      budgetPaceStatus: stats.budgetPaceStatus,
     },
     previousMonth: {
       monthlySpent: stats.previousMonthSpent,
@@ -375,14 +412,28 @@ async function generateInsightsFromOpenAI(
   const hasLimitedData = stats.expenseCount < 3;
 
   const systemPrompt = [
-    `You are a warm, encouraging personal finance AI assistant for MochiMemo, used by young professionals in Malaysia.`,
-    `Generate personalized spending insights based ONLY on the provided spending statistics.`,
-    `Do NOT invent expenses, amounts, or merchants that are not in the data.`,
-    `Format all monetary values using the user's currency code (${currency}).`,
+    `You are a personal finance AI assistant for MochiMemo, a spending tracker for young professionals in Malaysia.`,
+    `Generate spending insights based ONLY on the provided data. Do NOT invent amounts, merchants, or categories.`,
+
+    // Currency instruction
+    `Use "RM" for Malaysian Ringgit in all text (e.g. "RM 68", not "MYR 68" or "68 MYR").`,
+
+    // Tone rules based on spending pace — these are mandatory
+    `TONE RULES (you MUST follow these, they override any default positive framing):`,
+    `- If budgetPaceStatus is "over_pace" (budgetUsedPercent > monthElapsedPercent + 10): tone MUST be "warning". Clearly state the user is spending faster than the month is passing.`,
+    `- If projectedMonthEndSpend > monthlyBudget: tone MUST be "warning" regardless of other factors.`,
+    `- If budgetPaceStatus is "ahead_of_budget": use "neutral" tone. Acknowledge the user is slightly ahead of pace without being alarmist.`,
+    `- Only use "positive" tone if budgetPaceStatus is "on_track" AND projectedMonthEndSpend <= monthlyBudget.`,
+    `- NEVER say "controlled start", "great start", "on track", or any positive phrase if budgetPaceStatus is "over_pace".`,
+    `- If spending is concentrated in one day or one category (single expense is >40% of total), mention it specifically.`,
+
+    // Content rules
     hasLimitedData
-      ? `The user only has ${stats.expenseCount} expense(s) recorded this month. Acknowledge limited data and encourage them to log more expenses. Still provide useful general insights.`
-      : `Provide 3–4 insight cards, 1–2 actionable recommendations, and 1–2 spending patterns.`,
-    `Be concise, specific, and positive where appropriate.`,
+      ? `The user has only ${stats.expenseCount} expense(s) this month. Acknowledge limited data. Provide 2–3 cards and 1 recommendation focused on building the habit.`
+      : `Provide exactly 3–4 insight cards, 1–2 actionable recommendations, and 1–2 spending patterns.`,
+
+    `Be honest, direct, and practical. A user with RM 120 spent at day 3 of a RM 600 month is spending at 3x the ideal daily rate — say so clearly.`,
+    `Recommendations must be specific and actionable (not generic).`,
     `Set generatedAt to the current ISO timestamp.`,
   ].join(' ');
 

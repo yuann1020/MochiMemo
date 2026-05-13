@@ -83,7 +83,7 @@ Deno.serve(async (request) => {
     formData.append('response_format', 'json');
     formData.append(
       'prompt',
-      'The speaker is logging personal expenses in Malaysia. Preserve amounts like RM18 and merchants such as bubble tea, parking, Grab, Lotus, lunch, groceries.',
+      'RM bubble tea parking Grab Lotus lunch groceries coffee transport shopping entertainment dinner breakfast',
     );
     if (language) formData.append('language', language);
     const audioBuffer = new ArrayBuffer(audioBytes.byteLength);

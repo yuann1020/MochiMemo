@@ -27,9 +27,17 @@ export function getCategoryIcon(category: string): IconName {
 }
 
 export function normalizeCategoryLabel(category: string): string {
-  if (/^food\s*&\s*drink$/i.test(category)) return 'Food & Drinks';
-  if (/^others$/i.test(category)) return 'Other';
-  return category.trim() || 'Other';
+  const trimmed = category.trim();
+  if (!trimmed) return 'Other';
+  if (/^food\s*&?\s*drinks?$/i.test(trimmed)) return 'Food & Drinks';
+  if (/^others?$/i.test(trimmed)) return 'Other';
+  if (/^transport(ation)?$/i.test(trimmed)) return 'Transport';
+  if (/^utilities?$/i.test(trimmed)) return 'Utilities';
+  if (/^shopping$/i.test(trimmed)) return 'Shopping';
+  if (/^entertain(ment)?$/i.test(trimmed)) return 'Entertainment';
+  if (/^health(care)?$/i.test(trimmed)) return 'Health';
+  if (/^education(al)?$/i.test(trimmed)) return 'Education';
+  return trimmed;
 }
 
 export function formatExpenseDateTime(isoDate: string): string {

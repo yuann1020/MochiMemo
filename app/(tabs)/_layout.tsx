@@ -58,14 +58,8 @@ export default function TabLayout() {
         name="record"
         options={{
           title: 'Add',
-          tabBarIcon: ({ color, focused }) => (
-            <View style={[styles.addBtn, focused ? styles.addBtnActive : styles.addBtnIdle]}>
-              <IconSymbol
-                size={20}
-                name="plus"
-                color={focused ? '#ffffff' : color}
-              />
-            </View>
+          tabBarIcon: ({ color }) => (
+            <IconSymbol size={22} name="plus" color={color} />
           ),
         }}
       />
@@ -147,26 +141,5 @@ const styles = StyleSheet.create({
   tabItem: {
     paddingTop:    8,
     paddingBottom: 8,
-  },
-  addBtn: {
-    width:          44,
-    height:         44,
-    borderRadius:   Radii.full,
-    alignItems:     'center',
-    justifyContent: 'center',
-    marginBottom:   4,
-  },
-  addBtnActive: {
-    backgroundColor: '#F472B6',
-    shadowColor:     '#F472B6',
-    shadowOffset:    { width: 0, height: 0 },
-    shadowOpacity:   0.70,
-    shadowRadius:    16,
-    elevation:       8,
-  },
-  addBtnIdle: {
-    backgroundColor: 'rgba(244,114,182,0.10)',
-    borderWidth:     1,
-    borderColor:     'rgba(167,139,250,0.22)',
   },
 });

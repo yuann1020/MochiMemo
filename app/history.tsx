@@ -1,35 +1,58 @@
 import { useRouter } from 'expo-router';
-import { ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
+import { ActivityIndicator, ScrollView, StyleSheet, TouchableOpacity, View } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useMemo, useState } from 'react';
 
 import { ThemedText } from '@/components/themed-text';
 import { GlassCard } from '@/components/ui/glass-card';
 import { IconSymbol } from '@/components/ui/icon-symbol';
-import { ExpenseRow, FilterChip, SearchBar } from '@/components/ui/premium';
+import { ExpenseRow } from '@/components/ui/premium';
 import { ScreenBackground } from '@/components/ui/screen-background';
-import { Colors, Spacing } from '@/constants/theme';
-import { useRecentExpenses } from '@/hooks/use-expenses';
+import { Colors, Radii, Spacing } from '@/constants/theme';
+import { useExpensesByDateRange } from '@/hooks/use-expenses';
 import { useColorScheme } from '@/hooks/use-color-scheme';
 import type { Expense } from '@/types/expense';
 import { formatCurrency } from '@/utils/currency';
-import { formatExpenseTime, getCategoryColor, getCategoryIcon, getDateGroupLabel } from '@/utils/expense-display';
+import {
+  addDays,
+  formatDisplayDate,
+  getEndOfLocalDay,
+  getStartOfLocalDay,
+  isToday,
+} from '@/utils/date';
+import { formatExpenseTime, getCategoryColor, getCategoryIcon } from '@/utils/expense-display';
 
 export default function ExpenseHistoryScreen() {
   const router = useRouter();
   const colors = Colors[useColorScheme() ?? 'dark'];
-  const [search, setSearch] = useState('');
-  const expensesQuery = useRecentExpenses(50);
-  const groups = useMemo(
-    () => groupExpenses(filterExpenses(expensesQuery.data ?? [], search)),
-    [expensesQuery.data, search],
-  );
+  const [selectedDate, setSelectedDate] = useState(() => new Date());
+
+  const start = useMemo(() => getStartOfLocalDay(selectedDate), [selectedDate]);
+  const end = useMemo(() => getEndOfLocalDay(selectedDate), [selectedDate]);
+  const expensesQuery = useExpensesByDateRange(start, end);
+
+  const expenses = expensesQuery.data ?? [];
+  const dailyTotal = expenses.reduce((sum, e) => sum + e.amount, 0);
+  const todaySelected = isToday(selectedDate);
+
+  function goToPrevDay() {
+    setSelectedDate((d) => addDays(d, -1));
+  }
+
+  function goToNextDay() {
+    if (!todaySelected) setSelectedDate((d) => addDays(d, 1));
+  }
+
+  function goToToday() {
+    setSelectedDate(new Date());
+  }
 
   return (
     <View style={[styles.root, { backgroundColor: colors.background }]}>
       <ScreenBackground variant="quiet" />
       <SafeAreaView style={styles.safe}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+
           <TouchableOpacity activeOpacity={0.75} onPress={() => router.back()} style={styles.backButton}>
             <IconSymbol size={18} name="arrow.left" color={colors.text} />
           </TouchableOpacity>
@@ -38,83 +61,133 @@ export default function ExpenseHistoryScreen() {
             Expense History
           </ThemedText>
 
-          <SearchBar
-            placeholder="Search merchant, category..."
-            value={search}
-            onChangeText={setSearch}
-          />
+          {/* Date selector */}
+          <GlassCard padded={false}>
+            <View style={styles.dateSelectorRow}>
+              <TouchableOpacity
+                activeOpacity={0.76}
+                onPress={goToPrevDay}
+                style={styles.dateNavButton}
+              >
+                <IconSymbol size={18} name="chevron.left" color={colors.primaryGlow} />
+              </TouchableOpacity>
 
-          <View style={styles.filters}>
-            <FilterChip label="All Categories" />
-            <FilterChip label="This Month" />
-          </View>
-
-          {expensesQuery.isError && (
-            <GlassCard variant="warn" padded={false}>
-              <View style={styles.stateNotice}>
-                <IconSymbol size={16} name="exclamationmark.triangle.fill" color={colors.accentHi} />
-                <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
-                  Could not load Supabase expenses.
+              <View style={styles.dateCenter}>
+                <ThemedText type="bodyBold" style={styles.dateText} numberOfLines={1} adjustsFontSizeToFit>
+                  {formatDisplayDate(selectedDate)}
                 </ThemedText>
+                {todaySelected && (
+                  <ThemedText type="caption" style={{ color: colors.primaryGlow }}>
+                    Today
+                  </ThemedText>
+                )}
               </View>
-            </GlassCard>
-          )}
 
-          {groups.length > 0 ? groups.map((group) => (
-            <View key={group.title} style={styles.group}>
-              <ThemedText type="bodyBold" style={styles.groupTitle}>
-                {group.title}
-              </ThemedText>
-              <View style={styles.list}>
-                {group.expenses.map((expense) => (
-                  <ExpenseRow
-                    key={expense.id}
-                    {...expenseToRow(expense)}
-                    onPress={() => router.push({ pathname: '/expense-detail', params: { id: expense.id } })}
+              <View style={styles.dateNavRight}>
+                {!todaySelected && (
+                  <TouchableOpacity
+                    activeOpacity={0.76}
+                    onPress={goToToday}
+                    style={styles.todayPill}
+                  >
+                    <ThemedText type="caption" style={{ color: colors.primaryGlow, fontWeight: '700' }}>
+                      Today
+                    </ThemedText>
+                  </TouchableOpacity>
+                )}
+                <TouchableOpacity
+                  activeOpacity={todaySelected ? 1 : 0.76}
+                  onPress={goToNextDay}
+                  disabled={todaySelected}
+                  style={[styles.dateNavButton, todaySelected && styles.dateNavButtonDisabled]}
+                >
+                  <IconSymbol
+                    size={18}
+                    name="chevron.right"
+                    color={todaySelected ? colors.textMuted : colors.primaryGlow}
                   />
-                ))}
+                </TouchableOpacity>
               </View>
             </View>
-          )) : (
-            <GlassCard padded={false}>
-              <View style={styles.emptyState}>
+          </GlassCard>
+
+          {/* Daily summary */}
+          <GlassCard padded={false}>
+            <View style={styles.summaryRow}>
+              <View style={styles.summaryCopy}>
                 <ThemedText type="bodyBold" style={{ color: '#FFFFFF' }}>
-                  No expenses found.
+                  {todaySelected ? "Today's spending" : 'Total spent'}
                 </ThemedText>
                 <ThemedText type="caption" style={{ color: colors.textMuted }}>
-                  Saved expenses will appear here.
+                  {expenses.length} expense{expenses.length !== 1 ? 's' : ''}
+                </ThemedText>
+              </View>
+              <ThemedText style={[styles.summaryTotal, { color: colors.accentHi }]}>
+                {formatCurrency(dailyTotal)}
+              </ThemedText>
+            </View>
+          </GlassCard>
+
+          {/* Loading */}
+          {expensesQuery.isLoading && (
+            <GlassCard padded={false}>
+              <View style={styles.stateRow}>
+                <ActivityIndicator size="small" color={colors.primaryGlow} />
+                <ThemedText type="caption" style={{ color: colors.textMuted }}>
+                  Loading expenses...
                 </ThemedText>
               </View>
             </GlassCard>
           )}
+
+          {/* Error */}
+          {expensesQuery.isError && (
+            <GlassCard variant="warn" padded={false}>
+              <View style={styles.stateRow}>
+                <IconSymbol size={16} name="exclamationmark.triangle.fill" color={colors.accentHi} />
+                <ThemedText type="caption" style={{ color: colors.textSecondary, flex: 1 }}>
+                  Could not load expenses.
+                </ThemedText>
+              </View>
+            </GlassCard>
+          )}
+
+          {/* Expense list */}
+          {!expensesQuery.isLoading && expenses.length > 0 && (
+            <View style={styles.list}>
+              {expenses.map((expense) => (
+                <ExpenseRow
+                  key={expense.id}
+                  {...expenseToRow(expense)}
+                  onPress={() =>
+                    router.push({ pathname: '/expense-detail', params: { id: expense.id } })
+                  }
+                />
+              ))}
+            </View>
+          )}
+
+          {/* Empty state */}
+          {!expensesQuery.isLoading && !expensesQuery.isError && expenses.length === 0 && (
+            <GlassCard padded={false}>
+              <View style={styles.emptyState}>
+                <IconSymbol size={24} name="calendar" color={colors.textMuted} />
+                <ThemedText type="bodyBold" style={{ color: '#FFFFFF', textAlign: 'center' }}>
+                  No expenses on this day
+                </ThemedText>
+                <ThemedText type="caption" style={{ color: colors.textMuted, textAlign: 'center' }}>
+                  {todaySelected
+                    ? 'Add your first expense for today.'
+                    : 'Nothing was logged on this day.'}
+                </ThemedText>
+              </View>
+            </GlassCard>
+          )}
+
         </ScrollView>
       </SafeAreaView>
     </View>
   );
-}
-
-function filterExpenses(expenses: Expense[], search: string): Expense[] {
-  const query = search.trim().toLowerCase();
-  if (!query) return expenses;
-
-  return expenses.filter((expense) => {
-    const haystack = `${expense.merchant} ${expense.category} ${expense.note ?? ''}`.toLowerCase();
-    return haystack.includes(query);
-  });
-}
-
-function groupExpenses(expenses: Expense[]): { title: string; expenses: Expense[] }[] {
-  const groups = expenses.reduce<Record<string, Expense[]>>((acc, expense) => {
-    const title = getDateGroupLabel(expense.spentAt);
-    acc[title] ??= [];
-    acc[title].push(expense);
-    return acc;
-  }, {});
-
-  return Object.entries(groups).map(([title, groupedExpenses]) => ({
-    title,
-    expenses: groupedExpenses,
-  }));
 }
 
 function expenseToRow(expense: Expense) {
@@ -149,20 +222,73 @@ const styles = StyleSheet.create({
   title: {
     color: '#FFFFFF',
   },
-  filters: {
+  dateSelectorRow: {
     flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: Spacing.md,
+    paddingVertical: Spacing.md,
+    minHeight: 68,
     gap: Spacing.sm,
   },
-  group: {
-    gap: Spacing.sm,
+  dateNavButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(167,139,250,0.10)',
+    flexShrink: 0,
   },
-  groupTitle: {
+  dateNavButtonDisabled: {
+    opacity: 0.30,
+  },
+  dateCenter: {
+    flex: 1,
+    alignItems: 'center',
+    gap: 2,
+    paddingHorizontal: Spacing.xs,
+  },
+  dateText: {
     color: '#FFFFFF',
+    textAlign: 'center',
+    fontSize: 14,
+  },
+  dateNavRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: Spacing.sm,
+    flexShrink: 0,
+  },
+  todayPill: {
+    paddingHorizontal: Spacing.sm,
+    paddingVertical: 5,
+    borderRadius: Radii.full,
+    backgroundColor: 'rgba(196,181,253,0.12)',
+    borderWidth: 1,
+    borderColor: 'rgba(196,181,253,0.24)',
+  },
+  summaryRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: Spacing.lg,
+    paddingVertical: Spacing.md,
+    minHeight: 64,
+    gap: Spacing.md,
+  },
+  summaryCopy: {
+    gap: 3,
+  },
+  summaryTotal: {
+    fontSize: 22,
+    fontWeight: '800',
+    lineHeight: 28,
+    flexShrink: 0,
   },
   list: {
     gap: Spacing.sm,
   },
-  stateNotice: {
+  stateRow: {
     minHeight: 48,
     flexDirection: 'row',
     alignItems: 'center',
@@ -171,10 +297,11 @@ const styles = StyleSheet.create({
     paddingVertical: Spacing.sm,
   },
   emptyState: {
-    minHeight: 78,
+    minHeight: 110,
+    alignItems: 'center',
     justifyContent: 'center',
-    gap: 3,
-    paddingHorizontal: Spacing.lg,
-    paddingVertical: Spacing.md,
+    gap: Spacing.sm,
+    paddingHorizontal: Spacing.xl,
+    paddingVertical: Spacing.xl,
   },
 });

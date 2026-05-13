@@ -50,9 +50,7 @@ export default function ExpenseDetailScreen() {
             <ThemedText type="bodyBold" style={{ color: '#FFFFFF' }}>
               Expense Detail
             </ThemedText>
-            <TouchableOpacity activeOpacity={0.75} style={styles.backButton}>
-              <IconSymbol size={18} name="ellipsis" color={colors.text} />
-            </TouchableOpacity>
+            <View style={styles.backButton} />
           </View>
 
           <GlassCard variant="purple">
@@ -110,9 +108,8 @@ export default function ExpenseDetailScreen() {
           </GlassCard>
 
           <View style={styles.actions}>
-            <SecondaryButton label="Edit" icon="pencil" style={styles.actionButton} />
             <SecondaryButton
-              label={deleteMutation.isPending ? 'Deleting' : 'Delete'}
+              label={deleteMutation.isPending ? 'Deleting...' : 'Delete Expense'}
               icon="trash.fill"
               danger
               onPress={handleDelete}
