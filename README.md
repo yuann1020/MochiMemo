@@ -1,18 +1,59 @@
 # MochiMemo
 
-AI voice-first spending tracker for students and young professionals.
+> AI voice-first spending tracker for students and young professionals.
 
-MochiMemo lets you record or type daily expenses by voice, uses AI to automatically extract spending details, saves them securely per-user, and generates personalized spending insights from your real monthly data.
+![MochiMemo Hero](docs/images/hero.png)
 
-Built with **Expo React Native**, **Supabase**, and **OpenAI**.
+> **Note:** Add app screenshots to `docs/images/` before publishing. See [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md) for naming and capture instructions.
 
 ---
 
-## Features
+## 📖 Overview
+
+MochiMemo is a mobile spending tracker that lets users log expenses by voice or text. It uses AI to transcribe speech, extract structured expense details, and generate spending insights based on real monthly data. Built with Expo React Native, Supabase, and OpenAI, with all user data protected by Supabase Row Level Security.
+
+---
+
+## 🎬 Demo
+
+| Resource | Link |
+|---|---|
+| Demo Video | [Watch Demo](PASTE_YOUR_DEMO_VIDEO_LINK_HERE) |
+| Demo Script | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) |
+
+> Replace `PASTE_YOUR_DEMO_VIDEO_LINK_HERE` with a YouTube, Google Drive, or GitHub release link after recording your demo.
+
+---
+
+## 📸 Screenshots
+
+### Core App Flow
+
+| Home | Add Expense | Review Expense |
+|:---:|:---:|:---:|
+| ![Home](docs/images/home.png) | ![Add Expense](docs/images/add-expense-voice.png) | ![Review Expense](docs/images/review-expense.png) |
+
+### Spending Management
+
+| History | Insights | Budget Alert |
+|:---:|:---:|:---:|
+| ![History](docs/images/history.png) | ![Insights](docs/images/insights.png) | ![Budget Alert](docs/images/budget-alert.png) |
+
+### Account
+
+| Profile |
+|:---:|
+| ![Profile](docs/images/profile.png) |
+
+For screenshot naming and capture instructions, see [docs/SCREENSHOTS.md](docs/SCREENSHOTS.md).
+
+---
+
+## ✨ Features
 
 - Voice expense logging — speak your expense, AI extracts it automatically
 - AI transcription via OpenAI Whisper
-- AI expense extraction via OpenAI GPT-4o mini with structured JSON output
+- AI expense extraction with structured JSON output
 - Review and edit extracted expense before saving
 - Type expense mode as an alternative to voice
 - Supabase Auth with email/password
@@ -26,7 +67,7 @@ Built with **Expo React Native**, **Supabase**, and **OpenAI**.
 
 ---
 
-## Tech Stack
+## 🛠 Tech Stack
 
 | Layer | Technology |
 |---|---|
@@ -44,7 +85,7 @@ Built with **Expo React Native**, **Supabase**, and **OpenAI**.
 
 ---
 
-## Architecture
+## 🏗 Architecture
 
 ```
 Mobile App (Expo React Native)
@@ -53,8 +94,8 @@ Mobile App (Expo React Native)
 │
 ├── Supabase Edge Functions  (server-side, Deno runtime)
 │   ├── transcribe-audio      receives audio, calls OpenAI Whisper
-│   ├── extract-expense       receives text, calls OpenAI GPT-4o mini
-│   └── generate-insights     fetches user's data, calls OpenAI for insights
+│   ├── extract-expense       receives text, calls OpenAI model
+│   └── generate-insights     fetches user's data, calls OpenAI model
 │       └── uses SUPABASE_SERVICE_ROLE_KEY internally (never in mobile app)
 │
 ├── Supabase Postgres
@@ -68,7 +109,7 @@ Mobile App (Expo React Native)
 
 ---
 
-## App Flow
+## 🔄 App Flow
 
 1. Register or log in with email and password
 2. Tap **Add Expense**
@@ -81,7 +122,7 @@ Mobile App (Expo React Native)
 
 ---
 
-## Screens
+## 📱 Screens
 
 | Screen | Description |
 |---|---|
@@ -97,7 +138,7 @@ Mobile App (Expo React Native)
 
 ---
 
-## Environment Variables
+## ⚙️ Environment Variables
 
 ### Mobile app
 
@@ -126,7 +167,7 @@ See `supabase/.env.example` for reference.
 
 ---
 
-## Quick Start
+## 🚀 Quick Start
 
 ### Prerequisites
 
@@ -178,7 +219,7 @@ See [docs/SETUP.md](docs/SETUP.md) for full setup including common errors.
 
 ---
 
-## Testing
+## 🧪 Testing
 
 1. Register a new account
 2. Add a typed expense: `Bubble tea RM12, parking RM5`
@@ -193,7 +234,7 @@ See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the full demo walkthrough.
 
 ---
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 app/
@@ -222,17 +263,18 @@ docs/              Setup, architecture, security, and demo documentation
 
 ---
 
-## Known Limitations
+## ⚠️ Known Limitations
 
 - Google Sign-In requires a development or production build — not available in Expo Go
 - No receipt OCR scanning
 - No CSV export
 - No push notifications for budget alerts
 - AI insights refresh is not rate-limited in the current build
+- Expense editing from the detail screen is not yet implemented
 
 ---
 
-## Roadmap
+## 🗺 Roadmap
 
 - Edit expense from Expense Detail screen
 - Receipt OCR scanning
@@ -245,7 +287,7 @@ docs/              Setup, architecture, security, and demo documentation
 
 ---
 
-## Security
+## 🔒 Security
 
 OpenAI API keys are stored exclusively as Supabase Edge Function secrets — never in the mobile app or public environment variables. All user data is protected by Supabase RLS policies that ensure strict per-user isolation.
 
@@ -253,13 +295,14 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security details.
 
 ---
 
-## Docs
+## 📚 Docs
 
 - [Setup Guide](docs/SETUP.md)
 - [Architecture](docs/ARCHITECTURE.md)
 - [Features](docs/FEATURES.md)
 - [Security](docs/SECURITY.md)
 - [Demo Script](docs/DEMO_SCRIPT.md)
+- [Screenshot Guide](docs/SCREENSHOTS.md)
 
 ---
 
