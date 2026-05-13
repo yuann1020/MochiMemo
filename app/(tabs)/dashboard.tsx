@@ -6,7 +6,7 @@ import { GlassCard } from '@/components/ui/glass-card';
 import { IconSymbol } from '@/components/ui/icon-symbol';
 import { ScreenBackground } from '@/components/ui/screen-background';
 import {
-  DonutChartPlaceholder,
+  DonutChart,
   FilterChip,
   ProgressBar,
   SectionHeader,
@@ -94,7 +94,6 @@ export default function InsightsScreen() {
               </ThemedText>
               <View style={styles.chartLegend}>
                 <LegendDot label="This Month" color={colors.primaryGlow} />
-                <LegendDot label="vs Last Month" color={colors.accentHi} />
               </View>
             </View>
 
@@ -111,7 +110,6 @@ export default function InsightsScreen() {
                   <View key={week.label} style={styles.barGroup}>
                     <View style={styles.dualBars}>
                       <View style={[styles.chartBar, { height: `${Math.max(4, week.percent)}%` as any, backgroundColor: colors.primaryGlow }]} />
-                      <View style={[styles.chartBar, { height: `${Math.max(4, Math.round(week.percent * 0.72))}%` as any, backgroundColor: colors.accentHi }]} />
                     </View>
                     <ThemedText type="label" style={styles.weekLabel}>
                       {week.label}
@@ -131,7 +129,7 @@ export default function InsightsScreen() {
             </View>
 
             <View style={styles.categoryBody}>
-              <DonutChartPlaceholder value={formatCurrency(monthlySpent)} centerLabel="Total" size={132} segments={categoryData} />
+              <DonutChart value={formatCurrency(monthlySpent)} centerLabel="Total" size={132} segments={categoryData} />
               <View style={styles.categoryLegend}>
                 {categoryData.length > 0 ? categoryData.map((item) => (
                   <View key={item.category} style={styles.categoryRow}>

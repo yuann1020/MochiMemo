@@ -1,5 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { ComponentProps, ReactNode } from 'react';
+import Svg, { Circle } from 'react-native-svg';
 import {
   StyleSheet,
   TextInput,
@@ -389,7 +390,7 @@ export function ExpenseRow({
   );
 }
 
-export function DonutChartPlaceholder({
+export function DonutChart({
   value,
   size = 116,
   centerLabel = 'used',
@@ -401,43 +402,94 @@ export function DonutChartPlaceholder({
   segments?: { color: string; percent: number }[];
 }) {
   const colors = Colors[useColorScheme() ?? 'dark'];
-  const ring = Math.round(size / 12);
-  const innerSize = size - ring * 2;
+  const strokeWidth = Math.max(8, Math.round(size / 12));
+  const radius = (size - strokeWidth) / 2;
+  const cx = size / 2;
+  const cy = size / 2;
+  const circumference = 2 * Math.PI * radius;
 
-  const [c0, c1, c2, c3] = (!segments || segments.length === 0)
-    ? [colors.accent, colors.primaryGlow, colors.blue, colors.primary]
-    : buildDonutQuadrantColors(segments, colors.accent);
+  // Normalize percentages so arcs always fill exactly 360° regardless of rounding
+  const validSegs = (segments ?? []).filter(s => s.percent > 0.5);
+  const total = validSegs.reduce((sum, s) => sum + s.percent, 0);
+
+  let cumPct = 0;
+  const arcs = validSegs.map(s => {
+    const pct = total > 0 ? (s.percent / total) * 100 : 0;
+    const startPct = cumPct;
+    cumPct += pct;
+    return { color: s.color, pct, startPct };
+  });
+
+  const dominantColor = arcs[0]?.color ?? colors.accent;
 
   return (
-    <View style={[styles.donutWrap, { width: size, height: size }]}>
+    <View
+      style={{
+        width: size,
+        height: size,
+        shadowColor: dominantColor,
+        shadowOffset: { width: 0, height: 0 },
+        shadowOpacity: 0.5,
+        shadowRadius: 12,
+        elevation: 0,
+      }}
+    >
+      <Svg width={size} height={size}>
+        {/* Background track ring */}
+        <Circle
+          cx={cx}
+          cy={cy}
+          r={radius}
+          fill="none"
+          stroke="rgba(167,139,250,0.18)"
+          strokeWidth={strokeWidth}
+        />
+
+        {arcs.length > 0 ? (
+          arcs.map((arc, i) => {
+            const arcLen = (arc.pct / 100) * circumference;
+            // Rotate so 0% starts at the top (12 o'clock), going clockwise
+            const rotation = -90 + (arc.startPct / 100) * 360;
+            return (
+              <Circle
+                key={i}
+                cx={cx}
+                cy={cy}
+                r={radius}
+                fill="none"
+                stroke={arc.color}
+                strokeWidth={strokeWidth}
+                strokeDasharray={`${arcLen} ${circumference - arcLen}`}
+                strokeDashoffset={0}
+                transform={`rotate(${rotation}, ${cx}, ${cy})`}
+                strokeLinecap="butt"
+              />
+            );
+          })
+        ) : (
+          /* No data: faint decorative ring */
+          <Circle
+            cx={cx}
+            cy={cy}
+            r={radius}
+            fill="none"
+            stroke={colors.accent}
+            strokeWidth={strokeWidth}
+            opacity={0.3}
+          />
+        )}
+      </Svg>
+
+      {/* Centered label overlay */}
       <View
-        style={[
-          styles.donutTrack,
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            borderWidth: ring,
-          },
-        ]}
-      />
-      <View
-        style={[
-          styles.donutFill,
-          {
-            width: size,
-            height: size,
-            borderRadius: size / 2,
-            borderWidth: ring,
-            borderTopColor: c0,
-            borderRightColor: c1,
-            borderBottomColor: c2,
-            borderLeftColor: c3,
-            shadowColor: segments?.[0]?.color ?? colors.accent,
-          },
-        ]}
-      />
-      <View style={[styles.donutCenter, { width: innerSize, height: innerSize }]}>
+        style={{
+          position: 'absolute',
+          top: 0, left: 0, right: 0, bottom: 0,
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: strokeWidth + 2,
+        }}
+      >
         <ThemedText
           style={styles.donutValue}
           numberOfLines={1}
@@ -446,29 +498,12 @@ export function DonutChartPlaceholder({
         >
           {value}
         </ThemedText>
-        <ThemedText type="caption" style={{ color: colors.textMuted, textAlign: 'center' }}>
+        <ThemedText type="caption" style={styles.donutLabel}>
           {centerLabel}
         </ThemedText>
       </View>
     </View>
   );
-}
-
-function buildDonutQuadrantColors(
-  segments: { color: string; percent: number }[],
-  fallback: string,
-): [string, string, string, string] {
-  const q: [string, string, string, string] = [fallback, fallback, fallback, fallback];
-  let filled = 0;
-  for (const seg of segments) {
-    if (seg.percent <= 0 || filled >= 4) break;
-    const end = Math.min(4, filled + (seg.percent / 100) * 4);
-    const qStart = Math.floor(filled);
-    const qEnd = Math.min(3, Math.ceil(end) - 1);
-    for (let i = qStart; i <= qEnd; i++) q[i] = seg.color;
-    filled = end;
-  }
-  return q;
 }
 
 export function GradientOrb({
@@ -731,36 +766,21 @@ const styles = StyleSheet.create({
     color: '#F8F7FF',
     flexShrink: 0,
   },
-  donutWrap: {
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  donutTrack: {
-    position: 'absolute',
-    borderColor: 'rgba(167,139,250,0.18)',
-  },
-  donutFill: {
-    position: 'absolute',
-    shadowOffset: { width: 0, height: 0 },
-    shadowOpacity: 0.65,
-    shadowRadius: 12,
-    elevation: 0,
-  },
-  donutCenter: {
-    position: 'absolute',
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: Spacing.sm,
-  },
   filterChipPassive: {
     opacity: 0.78,
   },
   donutValue: {
-    fontSize: 15,
-    lineHeight: 19,
+    fontSize: 14,
+    lineHeight: 18,
     fontWeight: '800',
     color: '#F8F7FF',
     textAlign: 'center',
+  },
+  donutLabel: {
+    color: 'rgba(248,247,255,0.64)',
+    textAlign: 'center',
+    fontSize: 10,
+    lineHeight: 14,
   },
   gradientOrbOuter: {
     alignItems: 'center',

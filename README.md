@@ -18,10 +18,7 @@ MochiMemo is a mobile spending tracker that lets users log expenses by voice or 
 
 | Resource | Link |
 |---|---|
-| Demo Video | [Watch Demo](PASTE_YOUR_DEMO_VIDEO_LINK_HERE) |
-| Demo Script | [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) |
-
-> Replace `PASTE_YOUR_DEMO_VIDEO_LINK_HERE` with a YouTube, Google Drive, or GitHub release link after recording your demo.
+| Demo Video | [Watch Demo](https://drive.google.com/file/d/1VWhs4YTFJBDXzVZTWH441_kSKn7ZCE7v/view?usp=drive_link) |
 
 ---
 
@@ -230,8 +227,6 @@ See [docs/SETUP.md](docs/SETUP.md) for full setup including common errors.
 7. Edit profile to set a monthly budget
 8. Add expenses until budget alert triggers
 
-See [docs/DEMO_SCRIPT.md](docs/DEMO_SCRIPT.md) for the full demo walkthrough.
-
 ---
 
 ## 📁 Project Structure
@@ -247,7 +242,6 @@ app/
   budget-alert.tsx Budget overview
 components/
   ui/              Design system: GlassCard, premium components, VoiceOrb
-  mochi/           Legacy mascot components (not used in current UI)
 services/
   ai/              AI service layer (transcription, extraction)
   supabase/        Supabase client and data access functions
@@ -301,7 +295,6 @@ See [docs/SECURITY.md](docs/SECURITY.md) for full security details.
 - [Architecture](docs/ARCHITECTURE.md)
 - [Features](docs/FEATURES.md)
 - [Security](docs/SECURITY.md)
-- [Demo Script](docs/DEMO_SCRIPT.md)
 - [Screenshot Guide](docs/SCREENSHOTS.md)
 
 ---

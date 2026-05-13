@@ -8,7 +8,7 @@ import { IconSymbol } from '@/components/ui/icon-symbol';
 import { ScreenBackground } from '@/components/ui/screen-background';
 import {
   CategoryPill,
-  DonutChartPlaceholder,
+  DonutChart,
   ExpenseRow,
   MetricCard,
   SectionHeader,
@@ -97,7 +97,7 @@ export default function HomeScreen() {
                 />
               </View>
 
-              <DonutChartPlaceholder value={`${budgetPercentUsed}%`} size={112} centerLabel="of budget" segments={categoryData} />
+              <DonutChart value={`${budgetPercentUsed}%`} size={112} centerLabel="of budget" segments={categoryData} />
 
               <View style={styles.legend}>
                 {categoryData.length > 0 ? categoryData.map((item) => (

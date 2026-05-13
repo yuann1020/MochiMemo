@@ -25,6 +25,7 @@ expo-env.d.ts
 npm-debug.*
 yarn-debug.*
 yarn-error.*
+*.log
 
 # macOS
 .DS_Store
@@ -41,3 +42,9 @@ app-example
 # generated native folders
 /ios
 /android
+
+# Supabase CLI cache (not secrets, but no need to track)
+supabase/.temp/
+
+# Claude Code internal
+.claude/
